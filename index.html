@@ -1,666 +1,298 @@
 <!DOCTYPE html>
-<!-- Canvas refreshed with env-safe build: defines IS_CANVAS/BASE_PATH and keeps all tests. -->
+<!-- Single image · single target with Timer + Scoring + MCQ gating -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MSK Hotspot Hunt — Ultrasound Edition</title>
-  <meta name="description" content="Click‑to‑locate game for musculoskeletal ultrasound learners. Single‑file, GitHub Pages ready. Timer, lives, Regular/Hard modes, MCQs, and a mini report builder. Includes a box‑editor for adding your own targets." />
+  <title>MSK Hotspot — Single Image · MCQ</title>
   <style>
-    :root{
-      --bg:#0b1020; --bg2:#0b0f1a; --card:#131a2a; --ink:#eaf0ff; --muted:#9aa4bf;
-      --acc1:#7c8cff; --acc2:#00d1ff; --ok:#33d17a; --bad:#ff6b6b; --warn:#ffc36b; --border:#2a3160;
-      --shadow:0 20px 50px rgba(0,0,0,.45);
-    }
+    :root{ --bg:#0b1020; --card:#12182b; --ink:#eaf0ff; --muted:#9aa4bf; --border:#2a3160; --ok:#33d17a; --bad:#ff6b6b; }
     *{box-sizing:border-box}
-    html,body{height:100%}
-    body{margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; background:radial-gradient(1200px 800px at 20% -10%, #182449 0%, #0f1730 40%, #0b1020 100%), var(--bg); color:var(--ink)}
-    .wrap{max-width:1100px; margin:0 auto; padding:16px;}
-    header{display:flex; align-items:center; gap:10px; justify-content:space-between;}
-    .title{display:flex; align-items:center; gap:12px}
-    .title h1{font-size:20px; margin:0; letter-spacing:0.2px}
-    .badge{font-size:12px; color:var(--ink); background:linear-gradient(180deg, rgba(124,140,255,.25), rgba(0,209,255,.25)); border:1px solid var(--border); padding:4px 8px; border-radius:999px}
-    .hud{display:flex; align-items:center; gap:14px; color:var(--muted);}
-    .hud .pill{border:1px solid var(--border); padding:6px 10px; border-radius:10px; background:linear-gradient(180deg, rgba(19,26,42,.6), rgba(11,16,32,.6));}
-    .hud .mode{display:flex; gap:6px; align-items:center}
-    .mode button{border:1px solid var(--border); background:linear-gradient(180deg, rgba(23,32,58,.9), rgba(12,18,36,.9)); color:var(--ink); padding:6px 10px; border-radius:10px; cursor:pointer}
-    .mode button.active{outline:2px solid var(--acc2)}
+    body{margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:radial-gradient(1200px 800px at 20% -10%, #182449 0%, #0f1730 40%, #0b1020 100%), var(--bg); color:var(--ink)}
+    .wrap{max-width:1100px; margin:0 auto; padding:16px}
+    h1{font-size:20px; margin:0 0 12px}
 
-    .card{margin-top:16px; background:linear-gradient(180deg, rgba(23,32,58,.6), rgba(9,13,23,.6)); border:1px solid var(--border); border-radius:18px; box-shadow:var(--shadow); overflow:hidden}
-    .bar{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border); background:linear-gradient(180deg, rgba(21,28,51,.85), rgba(16,22,41,.85))}
-    .bar .left{display:flex; align-items:center; gap:10px}
-    .bar .right{display:flex; align-items:center; gap:10px}
+    .card{background:linear-gradient(180deg, rgba(23,32,58,.6), rgba(9,13,23,.6)); border:1px solid var(--border); border-radius:16px; overflow:hidden}
+    .bar{display:grid; gap:10px; align-items:center; padding:12px; border-bottom:1px solid var(--border); grid-template-columns: 1fr auto auto auto}
+    .bar input[type="text"]{width:100%; padding:8px 10px; background:#0e1426; border:1px solid var(--border); border-radius:8px; color:var(--ink)}
     .btn{border:1px solid var(--border); background:linear-gradient(180deg, rgba(124,140,255,.15), rgba(0,209,255,.15)); color:var(--ink); padding:8px 12px; border-radius:10px; cursor:pointer}
     .btn.secondary{background:linear-gradient(180deg, rgba(255,195,107,.12), rgba(124,140,255,.12))}
+    .btn.small{padding:6px 10px; font-size:12px}
+    label.mini{font-size:12px; color:var(--muted)}
 
-    .board{position:relative; width:100%; aspect-ratio:16/9; background:radial-gradient(1000px 500px at 50% 20%, #1b223d, #0e1426 55%, #0b1020); display:flex; align-items:center; justify-content:center}
-    .imgwrap{position:relative; width:100%; height:100%;}
+    .board{position:relative; width:100%; aspect-ratio:16/9; background:#0b1020}
+    .imgwrap{position:relative; width:100%; height:100%}
     .imgwrap img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain}
     .overlay{position:absolute; inset:0}
-    .prompt{padding:10px 14px; font-size:16px}
-    .muted{color:var(--muted)}
-    .attempts{display:flex; gap:6px}
-    .heart{width:18px; height:18px; border-radius:4px; border:1px solid var(--border); background:linear-gradient(180deg, rgba(255,107,107,.25), rgba(255,107,107,.12))}
-    .heart.lost{filter:grayscale(1); opacity:.5}
+    .dev{position:absolute; inset:0; pointer-events:none}
+    .dev .box{position:absolute; border:1px dashed rgba(255,255,255,.45); background:rgba(124,140,255,.15)}
+    .targetBox{position:absolute; border:2px dashed rgba(0,255,200,.7); background:rgba(0,255,200,.12); pointer-events:none}
+    .marker{position:absolute; width:16px; height:16px; border:2px solid #fff; border-radius:50%; transform:translate(-50%,-50%)}
 
-    .marker{position:absolute; width:18px; height:18px; border:2px solid #fff; border-radius:50%; transform:translate(-50%, -50%); pointer-events:none}
-    .hit{outline:2px solid var(--ok);} .miss{outline:2px solid var(--bad);}
-
-    .devbox{position:absolute; inset:0; pointer-events:none}
-    .devbox .box{position:absolute; border:1px dashed rgba(255,255,255,.35); border-radius:4px}
-
-    .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:20px; background:rgba(0,0,0,.6); border:1px solid var(--border); padding:8px 12px; border-radius:10px; color:var(--ink)}
-
-    dialog{border:none; border-radius:16px; width:min(920px, 92vw); background:linear-gradient(180deg, rgba(19,26,42,.95), rgba(11,16,32,.95)); color:var(--ink); box-shadow:var(--shadow);}
-    dialog::backdrop{background:rgba(0,0,0,.45)}
-    .dlg-body{padding:18px}
-    .grid{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px}
-    @media (max-width:800px){ .grid{grid-template-columns:1fr} }
-    .mini{font-size:13px; color:var(--muted)}
+    .foot{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:10px 12px; border-top:1px solid var(--border)}
+    .mini{font-size:12px; color:var(--muted)}
     code{background:rgba(255,255,255,.06); border:1px solid var(--border); padding:2px 6px; border-radius:6px}
 
-    .footer{padding:10px 14px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center}
+    .hud{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    .pill{border:1px solid var(--border); padding:6px 10px; border-radius:10px; background:linear-gradient(180deg, rgba(19,26,42,.6), rgba(11,16,32,.6))}
 
-    /* Box‑editor (press E) */
-    .editor-tip{position:absolute; top:10px; right:10px; padding:6px 10px; border-radius:10px; background:rgba(0,0,0,.6); border:1px solid var(--border); font-size:13px}
-    .drag-rect{position:absolute; border:1px solid var(--acc2); background:rgba(0,209,255,.15); pointer-events:none}
-    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; border:1px solid var(--border); border-radius:6px; padding:0 6px; font-size:12px; background:rgba(255,255,255,.06)}
+    .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:20px; background:rgba(0,0,0,.6); border:1px solid var(--border); padding:8px 12px; border-radius:10px; color:var(--ink)}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <header>
-      <div class="title">
-        <span class="badge">GitHub‑ready · Single file</span>
-        <h1>MSK Hotspot Hunt — Ultrasound Edition</h1>
-      </div>
-      <div class="hud">
-        <div class="pill" id="timer">10:00</div>
-        <div class="pill" id="score">Score: 0</div>
-        <div class="pill attempts" id="attempts"></div>
-        <div class="pill mode">
-          <span class="mini">Mode</span>
-          <button id="mode-regular" class="active" aria-pressed="true">Regular</button>
-          <button id="mode-hard" aria-pressed="false">Hard</button>
-        </div>
-      </div>
-    </header>
-
+    <h1>MSK Hotspot — Single Image · MCQ</h1>
     <section class="card">
       <div class="bar">
-        <div class="left">
-          <div class="prompt" id="prompt">Press <strong>Start</strong> to begin. You'll be asked to <em>locate</em> key MSK structures or sonographic signs, then answer a quick MCQ.</div>
-        </div>
-        <div class="right">
-          <button class="btn" id="startBtn">Start</button>
-          <button class="btn secondary" id="pathHelpBtn" title="Troubleshoot image paths">Fix image path</button>
-          <button class="btn secondary" id="howBtn" title="How to add your own cases">How it works</button>
-        </div>
+        <input id="imgUrl" placeholder="Image URL" value="https://fosk1984.github.io/Hotspot-hunt/assets/compartment2.png" />
+        <button class="btn" id="loadBtn">Load image</button>
+        <button class="btn secondary" id="openBtn">Open URL</button>
+        <button class="btn secondary" id="copyBtn">Copy URL</button>
+      </div>
+
+      <div class="bar" style="grid-template-columns:1fr auto auto auto auto auto; border-top:1px solid var(--border)">
+        <input id="targetName" type="text" placeholder="Target name (e.g., ECRB tendon)" />
+        <button class="btn small" id="useLast">Use last box as target</button>
+        <label class="mini"><input type="checkbox" id="showTarget" /> Show target</label>
+        <label class="mini"><input type="checkbox" id="editMode" /> Edit mode</label>
+        <button class="btn" id="startBtn">Start</button>
+        <button class="btn secondary" id="resetBtn">Reset</button>
       </div>
 
       <div class="board">
         <div class="imgwrap" id="imgwrap">
-          <img id="caseImg" alt="Ultrasound case" />
-          <div class="overlay" id="overlay" role="button" aria-label="Click on the requested structure"></div>
-          <div class="devbox" id="devbox" hidden></div>
-          <div class="editor-tip mini" id="editorTip" hidden>Editor ON — drag to draw a box. Press <code>E</code> to toggle · <code>C</code> to copy JSON</div>
+          <img id="img" alt="ultrasound" />
+          <div class="overlay" id="overlay" aria-label="Click to guess"></div>
+          <div class="dev" id="dev"></div>
+          <div class="targetBox" id="targetBox" hidden></div>
         </div>
       </div>
-      <div class="footer">
-        <span class="mini">Lives per item: 3 · Total time: 10:00 · <span class="kbd">D</span> dev boxes · <span class="kbd">E</span> box‑editor · <span class="kbd">Drop</span> an image to replace</span>
-        <div>
-          <button class="btn secondary" id="downloadReport" disabled>Download report</button>
-          <button class="btn secondary" id="nextBtn" disabled>Next</button>
+
+      <div class="foot">
+        <div class="mini" id="prompt">Draw a box over the correct region, click <strong>Use last box as target</strong>, name it, then press <strong>Start</strong>.</div>
+        <div class="hud">
+          <div class="pill">Timer: <span id="timer">2:00</span></div>
+          <div class="pill">Attempts: <span id="tries">—</span></div>
+          <div class="pill">Score: <span id="score">0</span></div>
+          <div class="pill">Status: <span id="status">idle</span></div>
         </div>
       </div>
     </section>
+    <p class="mini" style="margin-top:10px">If the image does not appear, click <strong>Open URL</strong> to see if it 404s. GitHub Pages is <em>case‑sensitive</em> (e.g. <code>.PNG</code> ≠ <code>.png</code>).</p>
   </div>
-
-  <!-- Optional soundtrack: replace src and it will only play after Start (user gesture). -->
-  <audio id="bgm" preload="none">
-    <!-- <source src="assets/tense-loop.mp3" type="audio/mpeg"> -->
-  </audio>
 
   <div class="toast" id="toast" hidden></div>
 
-  <dialog id="howDlg">
-    <div class="dlg-body">
-      <h2 style="margin-top:0">How it works / Add your own cases</h2>
-      <div class="grid">
-        <div>
-          <p>Each round shows an image and asks you to <strong>click the correct region</strong> (e.g., "Greater tuberosity"). You get <strong>3 attempts</strong> per target. After you hit it, answer a quick MCQ. Regular mode gives slightly larger hitboxes and easier MCQs; Hard is stricter and pulls from a harder bank.</p>
-          <ul>
-            <li><strong>Timer:</strong> 10 minutes for the whole game.</li>
-            <li><strong>Scoring:</strong> First‑try 100, second 60, third 30, fail 0. Hard mode ×1.25. MCQ +40 if correct.</li>
-            <li><strong>Next:</strong> After a correct click or after using all attempts.</li>
-            <li><strong>Best score:</strong> Saved locally on this browser.</li>
-          </ul>
-        </div>
-        <div>
-          <p>Cases live in the <code>CASES</code> array below. Coordinates use <strong>percent</strong> of the image (<code>x,y,w,h</code> in 0–100). Put your images in <code>assets/</code> and reference them. Press <code>D</code> to show dev boxes while tuning. Or press <code>E</code> to use the built‑in <em>box‑editor</em>: drag to draw a rectangle and press <code>C</code> to copy a JSON snippet for your case.</p>
-<pre style="white-space:pre-wrap; font-size:12px; line-height:1.25; background:rgba(255,255,255,.04); border:1px solid var(--border); padding:10px; border-radius:10px">{
-  id:"shoulder_supra_la",
-  title:"Shoulder — Supraspinatus long‑axis",
-  image:"assets/shoulder_supra_longaxis.jpg",
-  targets:[ {id:"gt", name:"Greater tuberosity", x:58, y:66, w:16, h:12} ],
-  mcq_regular:[{q:"Probe orientation?", options:["Long‑axis","Short‑axis","Axial"], answer:0}],
-  mcq_hard:[{q:"Optimise supraspinatus footprint by…", options:["Angling to avoid anisotropy","Using 12‑MHz only","Turning off compound"], answer:0}]
-}</pre>
-          <p class="mini">Tip: Provide images around 1600×900 (16:9) for best fit. PNG/JPG both fine.</p>
-        </div>
-      </div>
-    </div>
-    <div class="footer">
-      <span class="mini">Single‑file build © You. Use and remix freely with attribution.</span>
-      <button class="btn" id="closeHow">Close</button>
-    </div>
-  </dialog>
-
-  <dialog id="pathDlg">
-    <div class="dlg-body">
-      <h2 style="margin-top:0">Fix image path</h2>
-      <p class="mini">We’ll check the current case’s image path and show the exact URL your browser is trying. Common issues: wrong folder, wrong filename case (e.g. <code>.PNG</code> vs <code>.png</code>), or GitHub Pages publishing from a subfolder.</p>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start">
-        <div>
-          <div class="mini">Configured path</div>
-          <code id="pathConfigured">assets/…</code>
-          <div class="mini" style="margin-top:8px">Resolved URL</div>
-          <code id="pathResolved">https://…</code>
-          <div class="mini" style="margin-top:8px">Tried URLs</div>
-          <div id="pathTried" class="mini" style="max-height:120px; overflow:auto; border:1px solid var(--border); padding:6px; border-radius:8px"></div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
-            <button class="btn" id="openResolved">Open URL</button>
-            <button class="btn" id="copyResolved">Copy URL</button>
-            <button class="btn secondary" id="tryReload">Try reload</button>
-            <button class="btn secondary" id="showThisCase">Show this case</button>
-          </div>
-          <p class="mini" style="margin-top:10px">Quick checklist:
-            <br>• File exists at that path
-            <br>• Name matches exactly (case‑sensitive)
-            <br>• <code>assets/</code> folder is in the same published root as <code>index.html</code>
-          </p>
-        </div>
-        <div>
-          <div class="mini">Live preview</div>
-          <div style="border:1px solid var(--border); border-radius:10px; padding:8px; background:rgba(255,255,255,.03)">
-            <img id="pathPreview" alt="image preview" style="max-width:100%; border-radius:8px"/>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="footer">
-      <span class="mini">Tip: you can also drag & drop an image onto the board to set it immediately.</span>
-      <button class="btn" id="closePathDlg">Close</button>
-    </div>
-  </dialog>
-
   <script>
-    // ========= Environment flags (fixes ReferenceError: IS_CANVAS & ensures BASE_PATH) =========
-    const IS_CANVAS = /web-sandbox\.oaiusercontent\.com$/i.test(location.hostname);
-    const IS_GHPAGES = /\.github\.io$/i.test(location.hostname);
-    // Directory of current page (always ends with '/') e.g. '/Hotspot-hunt/' on GH Pages
-    const BASE_PATH = (location.pathname.endsWith('/') ? location.pathname : location.pathname.replace(/[^/]+$/, '/'));
+    // ===== Config =====
+    const TIME_LIMIT = 120; // seconds (2:00)
+    const MCQ_POINTS = 40;  // +40 for correct MCQ
 
-    // ========= Demo background so the file works without assets =========
-    const DEMO_SVG_BG = encodeURIComponent(`
-      <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 675'>
-        <defs>
-          <linearGradient id='g' x1='0' y1='0' x2='0' y2='1'>
-            <stop offset='0' stop-color='#2a3357'/>
-            <stop offset='1' stop-color='#0d1326'/>
-          </linearGradient>
-          <filter id='noise'>
-            <feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/>
-            <feColorMatrix type='saturate' values='0.1'/>
-            <feComponentTransfer>
-              <feFuncR type='gamma' exponent='1.4'/>
-              <feFuncG type='gamma' exponent='1.4'/>
-              <feFuncB type='gamma' exponent='1.4'/>
-            </feComponentTransfer>
-            <feBlend mode='screen'/>
-          </filter>
-        </defs>
-        <rect width='1200' height='675' fill='url(#g)'/>
-        <rect x='100' y='120' width='1000' height='435' fill='#11182f' filter='url(#noise)' opacity='0.65' rx='12'/>
-        <rect x='280' y='420' width='650' height='24' fill='#d9e3ff' opacity='0.85' rx='12'/>
-        <rect x='280' y='446' width='650' height='10' fill='#96a6d6' opacity='0.45' rx='12'/>
-      </svg>
-    `);
-
-    // ========= Seeded MSK case bank (keeps your existing case intact; adds safe demo cases) =========
-    const CASES = [
-      // --- Your case (unchanged) ---
-      {
-        id: 'compartment2',
-        title: 'Wrist-short_axis',
-        image: 'https://fosk1984.github.io/Hotspot-hunt/assets/compartment2.png',
-        targets: [
-          { id: 'gt', name: 'Greater tuberosity (footprint)', x: 52, y: 68, w: 20, h: 10 },
-          { id: 'ss', name: 'Supraspinatus tendon', x: 40, y: 60, w: 35, h: 10 },
-        ],
-        mcq_regular: [{ q: 'Probe orientation?', options: ['Long-axis','Short-axis','Axial'], answer: 0 }],
-        mcq_hard:    [{ q: 'Best way to reduce anisotropy?', options: ['Heel-toe','Increase depth','Lower PRF'], answer: 0 }]
-      },
-      // --- Added demo case (safe fallback image) ---
-      {
-        id: 'demo_training',
-        title: 'Demo — Training background',
-        image: `data:image/svg+xml;charset=utf-8,${DEMO_SVG_BG}`,
-        targets: [
-          { id: 'a', name: 'Zone A', x: 30, y: 58, w: 24, h: 10 },
-          { id: 'b', name: 'Zone B', x: 55, y: 66, w: 20, h: 10 },
-        ],
-        mcq_regular: [{ q: 'Probe orientation?', options: ['Long-axis','Short-axis'], answer: 0 }],
-        mcq_hard:    [{ q: 'Optimise target?', options: ['Heel-toe','Reduce depth'], answer: 0 }]
-      },
-      // --- Extra demo case (no MCQ to exercise that path) ---
-      {
-        id: 'demo_no_mcq',
-        title: 'Demo — No MCQ case',
-        image: `data:image/svg+xml;charset=utf-8,${DEMO_SVG_BG}`,
-        targets: [ { id: 'z', name: 'Zone C', x: 42, y: 55, w: 22, h: 12 } ],
-        mcq_regular: [],
-        mcq_hard: []
-      }
+    // Simple MCQ bank (pick one at random)
+    const MCQ_BANK = [
+      { q: 'Which technique best reduces tendon anisotropy?', options: ['Heel-toe the probe', 'Increase depth', 'Lower PRF'], answer: 0 },
+      { q: 'What orientation is shown?', options: ['Long-axis', 'Short-axis', 'Axial'], answer: 1 }
     ];
 
-    // ========= State =========
-    const state = {
-      mode: 'regular',
-      timeLeft: 600, // seconds
-      timerId: null,
-      lives: 3,
-      score: 0,
-      best: Number(localStorage.getItem('mskhh_best')||0),
-      queue: [], // array of {caseIndex, targetIndex}
-      current: null, // same shape
-      allowClick: false,
-      mcqPending: null,
-      results: [], // {id, title, targetName, hit, tries, mcqCorrect}
-      editor: {active:false, start:null, rect:null}
-    };
-
-    // ========= Elements =========
+    // ===== Elements =====
+    const img = document.getElementById('img');
+    const imgUrl = document.getElementById('imgUrl');
+    const overlay = document.getElementById('overlay');
+    const dev = document.getElementById('dev');
+    const targetBoxEl = document.getElementById('targetBox');
+    const lastPrompt = document.getElementById('prompt');
+    const triesEl = document.getElementById('tries');
+    const statusEl = document.getElementById('status');
     const timerEl = document.getElementById('timer');
     const scoreEl = document.getElementById('score');
-    const attemptsEl = document.getElementById('attempts');
-    const promptEl = document.getElementById('prompt');
+
+    const targetNameEl = document.getElementById('targetName');
+    const useLastBtn = document.getElementById('useLast');
+    const showTargetCb = document.getElementById('showTarget');
+    const editModeCb = document.getElementById('editMode');
     const startBtn = document.getElementById('startBtn');
-    const nextBtn = document.getElementById('nextBtn');
-    const downloadBtn = document.getElementById('downloadReport');
-    const howBtn = document.getElementById('howBtn');
-    const howDlg = document.getElementById('howDlg');
-    const closeHow = document.getElementById('closeHow');
+    const resetBtn = document.getElementById('resetBtn');
 
-    const pathHelpBtn = document.getElementById('pathHelpBtn');
-    const pathDlg = document.getElementById('pathDlg');
-    const pathConfigured = document.getElementById('pathConfigured');
-    const pathResolved = document.getElementById('pathResolved');
-    const pathPreview = document.getElementById('pathPreview');
-    const pathTried = document.getElementById('pathTried');
-    const openResolved = document.getElementById('openResolved');
-    const copyResolved = document.getElementById('copyResolved');
-    const tryReload = document.getElementById('tryReload');
-    const closePathDlg = document.getElementById('closePathDlg');
-    const showThisCaseBtn = document.getElementById('showThisCase');
-
-    const modeRegularBtn = document.getElementById('mode-regular');
-    const modeHardBtn = document.getElementById('mode-hard');
-
-    const imgEl = document.getElementById('caseImg');
-    const overlay = document.getElementById('overlay');
-    const imgwrap = document.getElementById('imgwrap');
-    const devbox = document.getElementById('devbox');
-    const bgm = document.getElementById('bgm');
     const toast = document.getElementById('toast');
-    const editorTip = document.getElementById('editorTip');
 
-    // ========= Helpers =========
-    const fmt = (s)=>{ const m = Math.floor(s/60); const ss = Math.floor(s%60).toString().padStart(2,'0'); return `${m}:${ss}`; };
-    const shuffle = arr => arr.map(v=>[Math.random(),v]).sort((a,b)=>a[0]-b[0]).map(v=>v[1]);
-    function toastMsg(msg){ toast.textContent = msg; toast.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(()=>toast.hidden=true, 1700); }
-    function renderLives(n){ attemptsEl.innerHTML = ''; const max = 3; for(let i=0;i<max;i++){ const d=document.createElement('div'); d.className='heart'+(i<max-n?' lost':''); attemptsEl.appendChild(d);} }
-    function pickMCQ(c){ const bank = state.mode==='hard' ? (c.mcq_hard?.length?c.mcq_hard:c.mcq_regular||[]) : (c.mcq_regular||[]); return bank.length? bank[Math.floor(Math.random()*bank.length)] : null; }
+    // ===== Helpers =====
+    function toastMsg(msg){ toast.textContent = msg; toast.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(()=>toast.hidden=true, 1800); }
+    function pct(x, total){ return +(x/total*100).toFixed(1); }
+    function fmt(s){ s=Math.max(0,Math.floor(s)); const m=Math.floor(s/60); const ss=(s%60).toString().padStart(2,'0'); return `${m}:${ss}`; }
+    function pxFromPctRect(rect){
+      const bb = overlay.getBoundingClientRect();
+      return { x: bb.width*(rect.x/100), y: bb.height*(rect.y/100), w: bb.width*(rect.w/100), h: bb.height*(rect.h/100) };
+    }
+    function drawTargetBox(){
+      if(!TARGET) return;
+      const r = pxFromPctRect(TARGET);
+      Object.assign(targetBoxEl.style, {left:r.x+'px', top:r.y+'px', width:r.w+'px', height:r.h+'px'});
+      targetBoxEl.hidden = !showTargetCb.checked;
+    }
+    function isHit(px, py){
+      if(!TARGET) return false;
+      const r = pxFromPctRect(TARGET);
+      const pad = 6; // pixels of leniency
+      return (px >= r.x - pad && py >= r.y - pad && px <= r.x + r.w + pad && py <= r.y + r.h + pad);
+    }
+    function scoreForTry(t){ return t>=3?100 : t===2?60 : 30; }
 
-    function resolveSrc(src){
-      if(!src) return '';
-      const lower = String(src);
-      // already absolute or data/blob
-      if(/^data:|^blob:|^https?:\/\//i.test(lower)) return lower;
-      try { return new URL(src, window.location.href).href; } catch(e){ return src; }
+    // ===== Image loading =====
+    function load(url){
+      const u = String(url||'').trim();
+      if(!u){ toastMsg('Enter an image URL'); return; }
+      img.onload = ()=> { toastMsg('Image loaded'); drawTargetBox(); };
+      img.onerror = ()=> toastMsg('Image failed to load');
+      img.src = u + (u.includes('?')?'&':'?') + 'cb=' + Date.now();
     }
 
-    function ensureImage(src){
-      return new Promise((res)=>{
-        const original = String(src||'');
-        const enc = s => s.replace(/ /g, '%20');
-        const candidates = [];
-        const push = u => { if(u && !candidates.includes(u)) candidates.push(u); };
-        const resolved = resolveSrc(original);
-        push(resolved);
-        if(original.includes(' ')) push(resolveSrc(enc(original)));
-        if(/^assets\//i.test(original)){
-          // Try with site origin + base path (handles GitHub Pages subpath like /Hotspot-hunt/)
-          push(`${window.location.origin}${BASE_PATH}${original}`);
-          // Also try origin root (legacy)
-          push(`${window.location.origin}/${original}`);
-        }
-        const m = original.match(/\.([A-Za-z0-9]+)$/);
-        if(m){
-          const ext = m[1].toLowerCase();
-          const alt = (newExt)=> resolveSrc(original.slice(0, -ext.length) + newExt);
-          if(ext==='png') push(alt('PNG'));
-          if(ext==='jpg') push(alt('JPG'));
-          if(ext==='jpeg') push(alt('JPEG'));
-        }
-        function tryNext(i){
-          if(i>=candidates.length){
-            console.warn('Image not found after trying candidates', {requested: original, tried: candidates});
-            toastMsg(`Image not found: ${original} — tried ${candidates.length} URL(s). Click “Fix image path”.`);
-            return res({src: `data:image/svg+xml;charset=utf-8,${DEMO_SVG_BG}`, ok: false, resolved: resolved, tried: candidates});
-          }
-          const url = candidates[i];
-          const test = new Image();
-          const isData = /^data:|^blob:/i.test(url);
-          const withBust = isData ? url : url + (url.includes('?')?'&':'?') + 'cb=' + Date.now();
-          test.onload = ()=> res({src: withBust, ok: true, resolved: url, tried: candidates});
-          test.onerror = ()=>{
-            // Fallback: try fetching (helps with some caching/CDN edge cases)
-            fetch(url, {method:'GET', cache:'no-store'}).then(r=>{
-              if(!r.ok) throw new Error('fetch failed');
-              const ct = r.headers.get('content-type')||'';
-              if(!/image\//i.test(ct)) throw new Error('not an image');
-              return r.blob();
-            }).then(blob=>{
-              const obj = URL.createObjectURL(blob);
-              res({src: obj, ok: true, resolved: url, blob: true, tried: candidates});
-              setTimeout(()=> URL.revokeObjectURL(obj), 30000);
-            }).catch(()=> tryNext(i+1));
-          };
-          test.src = withBust;
-        }
-        tryNext(0);
-      });
-    }
+    document.getElementById('loadBtn').onclick = ()=> load(imgUrl.value);
+    document.getElementById('openBtn').onclick = ()=> { const u = imgUrl.value.trim(); if(u) window.open(u, '_blank'); };
+    document.getElementById('copyBtn').onclick = ()=> { const u = imgUrl.value.trim(); navigator.clipboard?.writeText(u).then(()=> toastMsg('URL copied')); };
 
-    function buildQueue(){
-      const pairs = [];
-      CASES.forEach((c, ci)=> c.targets.forEach((t, ti)=> pairs.push({caseIndex:ci, targetIndex:ti})) );
-      state.queue = shuffle(pairs).slice(0, 14); // up to 14 tasks per run
-    }
+    // ===== Dev draw (Edit mode only) =====
+    let start = null, rectEl = null, lastRect = null;
+    overlay.addEventListener('mousedown', (e)=>{
+      if(!editModeCb.checked) return; // only when editing
+      const bb = overlay.getBoundingClientRect();
+      start = {x:e.clientX-bb.left, y:e.clientY-bb.top};
+      rectEl = document.createElement('div'); rectEl.className='box'; dev.appendChild(rectEl);
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e)=>{
+      if(!start) return; const bb = overlay.getBoundingClientRect();
+      const cx=e.clientX-bb.left, cy=e.clientY-bb.top; const x=Math.min(cx,start.x), y=Math.min(cy,start.y); const w=Math.abs(cx-start.x), h=Math.abs(cy-start.y);
+      Object.assign(rectEl.style,{left:x+'px', top:y+'px', width:w+'px', height:h+'px'});
+    });
+    window.addEventListener('mouseup', ()=>{
+      if(!start) return; const r = rectEl.getBoundingClientRect(); const bb = overlay.getBoundingClientRect();
+      const x=pct(r.left-bb.left, bb.width), y=pct(r.top-bb.top, bb.height), w=pct(r.width, bb.width), h=pct(r.height, bb.height);
+      lastRect = {x,y,w,h}; lastPrompt.innerHTML = `Box captured → <strong>Use last box as target</strong> or press <strong>C</strong> to copy snippet.`;
+      toastMsg('Box captured');
+      start = null;
+    });
 
-    function startGame(){
-      if(!bgm._loaded && bgm.querySelector('source')){ try{ bgm.load(); bgm._loaded=true; }catch(e){} }
-      try{ bgm.currentTime = 0; bgm.volume = 0.4; bgm.play().catch(()=>{}); }catch(e){}
-      state.timeLeft = 600; state.score = 0; state.results = [];
-      scoreEl.textContent = `Score: ${state.score}`;
-      buildQueue();
-      nextBtn.disabled = true; downloadBtn.disabled = true;
-      tickTimer(); state.timerId = setInterval(tickTimer, 1000);
-      nextTask();
-    }
-
-    function endGame(reason='Time up!'){
-      clearInterval(state.timerId); state.timerId = null; state.allowClick = false;
-      const bonus = Math.floor(state.timeLeft * (state.mode==='hard'?1.25:1));
-      const total = state.score + bonus;
-      const best = Math.max(state.best, total); state.best = best; localStorage.setItem('mskhh_best', String(best));
-      promptEl.innerHTML = `<strong>${reason}</strong><br> Final score: <strong>${total}</strong> (time bonus ${bonus}). Best: ${best}. You can <em>Download report</em> for feedback.`;
-      nextBtn.disabled = true; downloadBtn.disabled = false; startBtn.textContent = 'Play again';
-    }
-
-    function tickTimer(){ state.timeLeft--; if(state.timeLeft < 0){ endGame('⏰ Time up!'); return; } timerEl.textContent = fmt(state.timeLeft); }
-
-    async function nextTask(){
-      if(state.queue.length === 0){ endGame('🏁 All tasks complete!'); return; }
-      state.current = state.queue.shift(); state.lives = 3; renderLives(state.lives);
-      const c = CASES[state.current.caseIndex]; const t = c.targets[state.current.targetIndex];
-      const {src, ok} = await ensureImage(c.image);
-      imgEl.src = src;
-      if(!ok){
-        promptEl.innerHTML = `<strong>Image not found</strong> for <code>${c.image}</code>. Check filename, extension & path (case‑sensitive). A demo background is shown.`;
+    // Copy snippet of last box
+    document.addEventListener('keydown', (e)=>{
+      if(e.key.toLowerCase()==='c' && lastRect){
+        const snippet = `{ id:\"new_target\", name:\"…\", x:${lastRect.x}, y:${lastRect.y}, w:${lastRect.w}, h:${lastRect.h} }`;
+        navigator.clipboard?.writeText(snippet).then(()=> toastMsg('Copied target JSON'));
       }
-      imgEl.onload = ()=> drawDevBoxes();
-      promptEl.innerHTML = `<strong>Find:</strong> ${t.name} <span class='mini'>(${c.title})</span>`;
-      nextBtn.disabled = true; state.allowClick = true; state.mcqPending = null;
+    });
+
+    // ===== Target configure =====
+    let TARGET = null; // {name,x,y,w,h} in percent
+
+    useLastBtn.onclick = ()=>{
+      if(!lastRect){ toastMsg('Draw a box first (toggle Edit mode)'); return; }
+      const name = targetNameEl.value.trim() || 'Target';
+      TARGET = { name, ...lastRect };
+      drawTargetBox();
+      lastPrompt.innerHTML = `Target set: <strong>${TARGET.name}</strong>. Press <strong>Start</strong> to play.`;
+      toastMsg('Target set');
+    };
+
+    showTargetCb.onchange = drawTargetBox;
+    window.addEventListener('resize', drawTargetBox);
+
+    // ===== Gameplay (Timer + Scoring + MCQ gating) =====
+    let active = false, tries = 0, timeLeft = TIME_LIMIT, timerId = null, score = 0, mcqPending = false;
+    let basePts = 0, mcqPts = 0;
+
+    function setStatus(s){ statusEl.textContent = s; }
+    function renderTries(){ triesEl.textContent = active ? String(tries) : '—'; }
+    function renderTimer(){ timerEl.textContent = fmt(timeLeft); }
+    function renderScore(){ scoreEl.textContent = String(score); }
+
+    function startTimer(){
+      clearInterval(timerId); timeLeft = TIME_LIMIT; renderTimer();
+      timerId = setInterval(()=>{ timeLeft -= 1; renderTimer(); if(timeLeft <= 0){ endGame('⏰ Time up!'); } }, 1000);
     }
 
-    function drawDevBoxes(){ if(!state.current) return; const c = CASES[state.current.caseIndex]; devbox.innerHTML = ''; c.targets.forEach(t=>{ const r = pctRectToPixels(t); const d=document.createElement('div'); d.className='box'; d.style.left=r.x+"px"; d.style.top=r.y+"px"; d.style.width=r.w+"px"; d.style.height=r.h+"px"; devbox.appendChild(d); }); }
-
-    function pctRectToPixels(t){ const rect = imgwrap.getBoundingClientRect(); const x=rect.width*(t.x/100); const y=rect.height*(t.y/100); const w=rect.width*(t.w/100); const h=rect.height*(t.h/100); return {x,y,w,h, rect}; }
-
-    function handleClick(ev){
-      if(!state.allowClick || !state.current || state.editor.active) return;
-      const c = CASES[state.current.caseIndex]; const t = c.targets[state.current.targetIndex];
-      const bounds = pctRectToPixels(t); const bb = imgwrap.getBoundingClientRect(); const cx = ev.clientX - bb.left; const cy = ev.clientY - bb.top;
-      const pad = state.mode==='hard' ? 0 : 6; // pixels padding in regular mode
-      const hit = (cx >= bounds.x - pad && cy >= bounds.y - pad && cx <= bounds.x + bounds.w + pad && cy <= bounds.y + bounds.h + pad);
-      const mk = document.createElement('div'); mk.className = 'marker ' + (hit?'hit':'miss'); mk.style.left = (cx)+"px"; mk.style.top = (cy)+"px"; overlay.appendChild(mk); setTimeout(()=>mk.remove(), 800);
-
-      if(hit){
-        const base = state.lives===3?100: state.lives===2?60:30; const mul = state.mode==='hard'?1.25:1; state.score += Math.round(base*mul); scoreEl.textContent = `Score: ${state.score}`; state.allowClick = false; askMCQ();
-      } else {
-        state.lives -= 1; renderLives(state.lives);
-        if(state.lives<=0){
-          state.allowClick = false; nextBtn.disabled = false; promptEl.innerHTML = `❌ Out of tries. Target was: <strong>${t.name}</strong>.`;
-          state.results.push({ id:c.id, title:c.title, targetName:t.name, hit:false, tries:3, mcqCorrect:false });
-        } else { toastMsg(`Miss — ${state.lives} ${(state.lives===1?'try':'tries')} left`); }
-      }
+    function endGame(reason){
+      clearInterval(timerId); timerId = null; active = false; mcqPending = false; startBtn.disabled = false; startBtn.textContent = 'Restart';
+      renderTries();
+      const timeBonus = Math.max(0, timeLeft);
+      const final = score + timeBonus;
+      lastPrompt.innerHTML = `<strong>${reason}</strong><br>Score: ${score} (hit ${basePts}${mcqPts?` + MCQ ${mcqPts}`:''}) + time bonus ${timeBonus} = <strong>${final}</strong>`;
+      setStatus('done');
     }
 
     function askMCQ(){
-      const c = CASES[state.current.caseIndex]; const t = c.targets[state.current.targetIndex];
-      const item = pickMCQ(c);
-      if(!item){
-        // No MCQ for this case: allow advancing immediately
-        promptEl.innerHTML = `✅ Correct — <strong>${t.name}</strong>.`;
-        nextBtn.disabled = false;
-        return;
-      }
-      // MCQ exists: strictly gate Next until answered (robust against any prior state)
-      nextBtn.disabled = true;
-      const opts = item.options.map((o,i)=>`<button class='btn' data-i='${i}'>${o}</button>`).join(' ');
-      promptEl.innerHTML = `✅ Correct — <strong>${t.name}</strong> · 🧠 ${item.q} <div style='margin-top:8px; display:flex; flex-wrap:wrap; gap:8px'>${opts}</div>`;
-      promptEl.querySelectorAll('button').forEach(b=>{
+      const item = MCQ_BANK[Math.floor(Math.random()*MCQ_BANK.length)];
+      mcqPending = true; startBtn.disabled = true; setStatus('awaiting MCQ');
+      const opts = item.options.map((o,i)=>`<button class='btn small' data-i='${i}'>${o}</button>`).join(' ');
+      lastPrompt.innerHTML = `✅ Correct — <strong>${TARGET.name}</strong> · MCQ: ${item.q}<div style='margin-top:8px; display:flex; flex-wrap:wrap; gap:8px'>${opts}</div>`;
+      lastPrompt.querySelectorAll('button').forEach(b=>{
         b.addEventListener('click', (e)=>{
+          if(!mcqPending) return; // guard
           const i = Number(e.currentTarget.getAttribute('data-i'));
           const ok = (i===item.answer);
-          if(ok){ toastMsg('MCQ ✓'); state.score += 40; scoreEl.textContent = `Score: ${state.score}`; }
-          else { toastMsg('MCQ ✗'); }
-          state.results.push({ id:c.id, title:c.title, targetName:t.name, hit:true, tries: (4 - state.lives), mcqCorrect: ok });
-          nextBtn.disabled = false;
+          mcqPts = ok ? MCQ_POINTS : 0; score += mcqPts; renderScore(); toastMsg(ok?'MCQ ✓':'MCQ ✗');
+          mcqPending = false; endGame('Round complete');
         }, {once:true});
       });
     }
 
-    // ========= Report builder =========
-    function buildReport(){
-      const lines = [];
-      const dt = new Date().toISOString();
-      lines.push(`# MSK Hotspot Hunt — Session Report`);
-      lines.push(`Date: ${dt}`);
-      lines.push(`Mode: ${state.mode}`);
-      lines.push(`Final score: ${state.score}`);
-      lines.push('');
-      lines.push('| Case | Target | Hit | Tries | MCQ |');
-      lines.push('|---|---|---:|---:|---:|');
-      state.results.forEach(r=>{
-        lines.push(`| ${r.title} | ${r.targetName} | ${r.hit?'Yes':'No'} | ${r.tries || ''} | ${r.mcqCorrect?'✓':'✗'} |`);
-      });
-      const blob = new Blob([lines.join('\n')], {type:'text/markdown'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'msk-hotspot-report.md'; a.click(); setTimeout(()=> URL.revokeObjectURL(url), 5000);
-    }
+    startBtn.onclick = ()=>{
+      if(mcqPending) return; // gate
+      if(!TARGET){ toastMsg('Set a target first'); return; }
+      active = true; tries = 3; basePts = 0; mcqPts = 0; score = 0; renderScore(); renderTries(); setStatus('playing'); lastPrompt.innerHTML = `Find: <strong>${TARGET.name}</strong>`; toastMsg('Go!');
+      startBtn.disabled = true; startBtn.textContent = 'Running…';
+      startTimer();
+    };
 
-    // ========= Case bank validator & self‑tests =========
-    function validateCaseBank(){
-      const errs = [];
-      CASES.forEach((c, ci)=>{
-        if(!Array.isArray(c.targets) || c.targets.length===0){ errs.push(`Case ${ci} (${c.id}) has no targets`); }
-        (c.targets||[]).forEach((t, ti)=>{
-          ['x','y','w','h'].forEach(k=>{ if(typeof t[k] !== 'number' || t[k] < 0 || t[k] > 100){ errs.push(`Case ${c.id} target ${ti} bad ${k}: ${t[k]}`); } });
-        });
-        const banks = [c.mcq_regular||[], c.mcq_hard||[]];
-        banks.forEach((bank, bi)=>{
-          bank.forEach((q, qi)=>{
-            if(!Array.isArray(q.options) || q.options.length<2) errs.push(`Case ${c.id} mcq[${bi}][${qi}] needs >=2 options`);
-            if(typeof q.answer!=='number' || q.answer<0 || q.answer>=q.options.length) errs.push(`Case ${c.id} mcq[${bi}][${qi}] bad answer index`);
-          });
-        });
-      });
-      return {ok: errs.length===0, errors: errs};
-    }
+    resetBtn.onclick = ()=>{
+      active = false; tries = 0; mcqPending = false; clearInterval(timerId); timerId = null; timeLeft = TIME_LIMIT; renderTimer(); renderTries(); setStatus('idle'); lastPrompt.innerHTML = 'Draw a box, set as target, then Start.'; overlay.querySelectorAll('.marker').forEach(n=>n.remove()); startBtn.disabled = false; startBtn.textContent = 'Start';
+    };
 
-    async function runSelfTests(){
+    // Click to guess (always available; only counts during active)
+    overlay.addEventListener('click', (e)=>{
+      const bb = overlay.getBoundingClientRect();
+      const x = e.clientX - bb.left; const y = e.clientY - bb.top;
+      const m = document.createElement('div'); m.className='marker'; m.style.left=x+'px'; m.style.top=y+'px'; overlay.appendChild(m); setTimeout(()=>m.remove(), 1200);
+
+      if(!active || mcqPending) return;
+      if(isHit(x,y)){
+        basePts = scoreForTry(tries); score += basePts; renderScore(); setStatus('hit'); toastMsg('Correct!'); active = false; askMCQ();
+      } else {
+        tries -= 1; renderTries(); toastMsg(tries>0? 'Miss — try again' : 'No tries left');
+        if(tries<=0){ setStatus('❌ out of tries'); active = false; showTargetCb.checked = true; drawTargetBox(); endGame('❌ Out of tries'); }
+      }
+    });
+
+    // ===== Self-tests (small & non-invasive) =====
+    (function selfTests(){
       const errs = [];
-      // time format
-      if(fmt(600) !== '10:00') errs.push('fmt(600) should be 10:00');
-      if(fmt(0) !== '0:00') errs.push('fmt(0) should be 0:00');
-      if(fmt(65) !== '1:05') errs.push('fmt(65) should be 1:05');
-      // shuffle sanity
-      const arr = [1,2,3,4]; const sh = shuffle(arr.slice()); if(sh.length!==4) errs.push('shuffle length');
-      // env flags & path sanity
-      if(typeof IS_CANVAS === 'undefined') errs.push('IS_CANVAS should be defined');
-      if(typeof BASE_PATH === 'undefined') errs.push('BASE_PATH should be defined');
-      if(BASE_PATH && !/\/$/.test(BASE_PATH)) errs.push('BASE_PATH should end with "/"');
+      // pct basic
+      if(pct(50,100)!==50 || pct(25,50)!==50) errs.push('pct failed');
+      // fmt basic
+      if(fmt(0)!=='0:00' || fmt(65)!=='1:05' || fmt(120)!=='2:00') errs.push('fmt failed');
+      // scoring
+      if(scoreForTry(3)!==100 || scoreForTry(2)!==60 || scoreForTry(1)!==30) errs.push('scoreForTry failed');
+      // hit-test sanity
+      const tmpT = {x:10,y:10,w:20,h:20};
+      TARGET = tmpT; const inPx = pxFromPctRect(tmpT);
+      if(!isHit(inPx.x+1, inPx.y+1)) errs.push('isHit should be true inside');
+      if(isHit(inPx.x-20, inPx.y-20)) errs.push('isHit should be false outside');
+      TARGET = null;
+      // MCQ gating: calling askMCQ should set mcqPending and disable Start
       try{
-        const base = 'https://example.com/Hotspot-hunt/index.html';
-        const href = new URL('assets/x.png', base).href;
-        if(!/\/Hotspot-hunt\/assets\/x\.png$/.test(href)) errs.push('URL resolution for repo subpath failed');
-      }catch(e){ errs.push('URL resolution threw'); }
-      // case-bank validation
-      const v = validateCaseBank(); if(!v.ok) errs.push(...v.errors);
-      // ensureImage should succeed for a data URL and gracefully fallback for a missing path
-      const okData = await ensureImage(`data:image/svg+xml;charset=utf-8,${DEMO_SVG_BG}`);
-      if(!okData.ok) errs.push('ensureImage should return ok=true for data URL');
-      const miss = await ensureImage('assets/__definitely_missing__.png');
-      if(miss.ok) errs.push('ensureImage should return ok=false for missing asset');
-      if(!Array.isArray(miss.tried) || miss.tried.length===0) errs.push('ensureImage should include tried candidates');
-      // MCQ gating: when an MCQ exists, Next must remain disabled until answered
-      try{
-        const hasMCQ = ((CASES[0].mcq_regular && CASES[0].mcq_regular.length) || (CASES[0].mcq_hard && CASES[0].mcq_hard.length));
-        const prevMode = state.mode; const prevCurrent = state.current; const prevDisabled = nextBtn.disabled;
-        state.mode = 'regular'; state.current = {caseIndex:0, targetIndex:0}; nextBtn.disabled = false;
+        const prevText = startBtn.textContent;
         askMCQ();
-        if(hasMCQ && nextBtn.disabled !== true) errs.push('MCQ gating failed: Next should be disabled while MCQ pending');
-        // restore
-        state.mode = prevMode; state.current = prevCurrent; nextBtn.disabled = prevDisabled;
-      } catch(e){ console.warn('Self‑test (MCQ gating) skipped:', e); }
-      // buildQueue sanity (non‑destructive)
-      try{
-        const prevQ = state.queue.slice();
-        buildQueue();
-        if(!Array.isArray(state.queue) || state.queue.length===0) errs.push('buildQueue produced empty queue');
-        if(state.queue.length>14) errs.push('buildQueue length > 14');
-        state.queue = prevQ; // restore
-      } catch(e){ console.warn('Self‑test (buildQueue) skipped:', e); }
+        if(!document.querySelector('#prompt button')) errs.push('MCQ not rendered');
+        if(!startBtn.disabled) errs.push('Start should be disabled during MCQ');
+        // clean up by clicking first option programmatically
+        document.querySelector('#prompt button')?.click();
+        startBtn.textContent = prevText; // neutralize visible change post-end
+      }catch(e){ /* ignore in environments without DOM click */ }
 
-      if(errs.length){ console.warn('Self‑tests FAILED:', errs); toastMsg('Self‑tests failed — see console'); }
-      else { console.log('Self‑tests passed'); }
-    }
+      if(errs.length){ console.warn('Self-tests FAILED:', errs); toastMsg('Self-tests failed — see console'); }
+    })();
 
-    // ========= Box‑editor (dev) =========
-    function toggleEditor(){ state.editor.active = !state.editor.active; editorTip.hidden = !state.editor.active; if(!state.editor.active){ overlay.querySelectorAll('.drag-rect').forEach(n=>n.remove()); } toastMsg(`Editor ${state.editor.active?'ON':'OFF'}`); }
-    function toPctRect(pxRect){ const bb = imgwrap.getBoundingClientRect(); let {x,y,w,h} = pxRect; x = x/bb.width*100; y = y/bb.height*100; w = w/bb.width*100; h = h/bb.height*100; return {x:+x.toFixed(1), y:+y.toFixed(1), w:+w.toFixed(1), h:+h.toFixed(1)}; }
-
-    function editorMouseDown(e){ if(!state.editor.active) return; const bb = imgwrap.getBoundingClientRect(); state.editor.start = {x:e.clientX-bb.left, y:e.clientY-bb.top}; const d=document.createElement('div'); d.className='drag-rect'; overlay.appendChild(d); state.editor.rectEl = d; }
-    function editorMouseMove(e){ if(!state.editor.active || !state.editor.start) return; const bb = imgwrap.getBoundingClientRect(); const cx=e.clientX-bb.left, cy=e.clientY-bb.top; const x=Math.min(cx, state.editor.start.x); const y=Math.min(cy, state.editor.start.y); const w=Math.abs(cx-state.editor.start.x); const h=Math.abs(cy-state.editor.start.y); Object.assign(state.editor.rectEl.style,{left:x+'px', top:y+'px', width:w+'px', height:h+'px'}); }
-    function editorMouseUp(){ if(!state.editor.active || !state.editor.start) return; const r = state.editor.rectEl.getBoundingClientRect(); const bb = imgwrap.getBoundingClientRect(); const px = {x:r.left-bb.left, y:r.top-bb.top, w:r.width, h:r.height}; state.editor.json = toPctRect(px); state.editor.start = null; toastMsg(`Box: ${JSON.stringify(state.editor.json)}`); }
-
-    function copyEditorJSON(){ if(!state.editor.json){ toastMsg('Draw a box first'); return; } const c = CASES[state.current?.caseIndex||0]; const snippet = `{ id:\"new_target\", name:\"…\", x:${state.editor.json.x}, y:${state.editor.json.y}, w:${state.editor.json.w}, h:${state.editor.json.h} } // ${c?.title||''}`; navigator.clipboard?.writeText(snippet).then(()=> toastMsg('Copied target JSON')).catch(()=> toastMsg(snippet)); }
-
-    // ========= Drag & drop image to replace current case image =========
-    function handleDrop(e){
-      e.preventDefault();
-      const file = e.dataTransfer?.files?.[0];
-      if(!file || !file.type.startsWith('image/')){ toastMsg('Drop a PNG/JPG image here'); return; }
-      const reader = new FileReader();
-      reader.onload = ()=>{
-        const data = reader.result;
-        const ci = state.current?.caseIndex ?? 0;
-        CASES[ci].image = data; // set as data URL
-        imgEl.src = data;
-        toastMsg('Image set from drop (remember to save your code)');
-      };
-      reader.readAsDataURL(file);
-    }
-
-    // ========= Path helper =========
-    async function openPathHelper(){
-      const ci = state.current?.caseIndex ?? 0;
-      const configured = CASES[ci].image;
-      const test = await ensureImage(configured);
-      pathConfigured.textContent = configured;
-      pathResolved.textContent = test.resolved || resolveSrc(configured) || '(empty)';
-      pathPreview.src = test.src || `data:image/svg+xml;charset=utf-8,${DEMO_SVG_BG}`;
-      pathTried.innerHTML = (test.tried||[]).map(u=>`<div><code>${u}</code></div>`).join('') || '<em>none</em>';
-      pathDlg.showModal();
-    }
-
-    openResolved?.addEventListener('click', ()=>{ const url = pathResolved.textContent; if(url && url !== '(empty)') window.open(url, '_blank'); });
-    copyResolved?.addEventListener('click', ()=>{ const url = pathResolved.textContent; navigator.clipboard?.writeText(url).then(()=> toastMsg('Resolved URL copied')); });
-    tryReload?.addEventListener('click', async ()=>{
-      const ci = state.current?.caseIndex ?? 0;
-      const {src} = await ensureImage(CASES[ci].image);
-      imgEl.src = src;
-      toastMsg('Tried reloading image');
-    });
-
-    showThisCaseBtn?.addEventListener('click', async ()=>{
-      const ci = state.current?.caseIndex ?? 0;
-      const {src} = await ensureImage(CASES[ci].image);
-      imgEl.src = src;
-      drawDevBoxes();
-      toastMsg('Showing this case image');
-    });
-
-    // ========= Events =========
-    overlay.addEventListener('click', handleClick);
-    window.addEventListener('resize', ()=>{ if(state.current) drawDevBoxes(); });
-
-    startBtn.addEventListener('click', ()=>{ startBtn.blur(); if(state.timerId){ clearInterval(state.timerId); state.timerId = null; } startGame(); });
-    nextBtn.addEventListener('click', ()=>{ overlay.querySelectorAll('.marker').forEach(n=>n.remove()); nextTask(); });
-
-    howBtn.addEventListener('click', ()=> howDlg.showModal());
-    closeHow.addEventListener('click', ()=> howDlg.close());
-
-    pathHelpBtn.addEventListener('click', openPathHelper);
-    closePathDlg.addEventListener('click', ()=> pathDlg.close());
-
-    document.addEventListener('keydown', (e)=>{
-      const k = e.key.toLowerCase();
-      if(k==='d'){ devbox.toggleAttribute('hidden'); drawDevBoxes(); }
-      if(k==='e'){ toggleEditor(); }
-      if(k==='c'){ copyEditorJSON(); }
-      if(k==='p'){ openPathHelper(); }
-    });
-
-    overlay.addEventListener('mousedown', editorMouseDown);
-    window.addEventListener('mousemove', editorMouseMove);
-    window.addEventListener('mouseup', editorMouseUp);
-
-    // drag & drop image
-    imgwrap.addEventListener('dragover', (e)=>{ e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
-    imgwrap.addEventListener('drop', handleDrop);
-
-    modeRegularBtn.addEventListener('click', ()=> setMode('regular'));
-    modeHardBtn.addEventListener('click', ()=> setMode('hard'));
-
-    function setMode(m){ state.mode = m; modeRegularBtn.classList.toggle('active', m==='regular'); modeHardBtn.classList.toggle('active', m==='hard'); modeRegularBtn.setAttribute('aria-pressed', m==='regular'); modeHardBtn.setAttribute('aria-pressed', m==='hard'); toastMsg(`Mode: ${m==='hard'?'Hard (stricter hitboxes, harder MCQs, bonus ×1.25)':'Regular'}`); }
-
-    function downloadIfReady(){ if(!downloadBtn.disabled) buildReport(); }
-    downloadBtn.addEventListener('click', downloadIfReady);
-
-    // ========= Init =========
-    function init(){
-      renderLives(3); timerEl.textContent = fmt(state.timeLeft);
-      promptEl.innerHTML = `Press <strong>Start</strong> to begin. You'll be asked to <em>locate</em> key MSK structures or sonographic signs, then answer a quick MCQ.`;
-      // preload first case image or fallback
-      ensureImage(CASES[0].image).then(({src})=>{ imgEl.src = src; });
-      // run non‑invasive self‑tests
-      runSelfTests();
-    }
-    init();
+    // Auto-load the provided URL initially
+    load(imgUrl.value);
+    renderTimer();
   </script>
 </body>
 </html>
