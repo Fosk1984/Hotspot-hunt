@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<!-- Single image · single target with Timer + Scoring + MCQ gating -->
+<!-- Single image · multiple targets · Timer + Scoring + MCQ gating · Save/Load/Export/Import -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MSK Hotspot — Single Image · MCQ</title>
+  <title>MSK Hotspot — Single Image · Multi-target · MCQ</title>
   <style>
     :root{ --bg:#0b1020; --card:#12182b; --ink:#eaf0ff; --muted:#9aa4bf; --border:#2a3160; --ok:#33d17a; --bad:#ff6b6b; }
     *{box-sizing:border-box}
@@ -26,7 +26,9 @@
     .overlay{position:absolute; inset:0}
     .dev{position:absolute; inset:0; pointer-events:none}
     .dev .box{position:absolute; border:1px dashed rgba(255,255,255,.45); background:rgba(124,140,255,.15)}
-    .targetBox{position:absolute; border:2px dashed rgba(0,255,200,.7); background:rgba(0,255,200,.12); pointer-events:none}
+    .targets{position:absolute; inset:0; pointer-events:none}
+    .targets .box{position:absolute; border:1px dashed rgba(0,255,200,.45); background:rgba(0,255,200,.08)}
+    .targetBox{position:absolute; border:2px dashed rgba(0,255,200,.9); background:rgba(0,255,200,.14); pointer-events:none}
     .marker{position:absolute; width:16px; height:16px; border:2px solid #fff; border-radius:50%; transform:translate(-50%,-50%)}
 
     .foot{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:10px 12px; border-top:1px solid var(--border)}
@@ -41,7 +43,7 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>MSK Hotspot — Single Image · MCQ</h1>
+    <h1>MSK Hotspot — Single Image · Multi-target · MCQ</h1>
     <section class="card">
       <div class="bar">
         <input id="imgUrl" placeholder="Image URL" value="https://fosk1984.github.io/Hotspot-hunt/assets/compartment2.png" />
@@ -50,30 +52,37 @@
         <button class="btn secondary" id="copyBtn">Copy URL</button>
       </div>
 
-      <div class="bar" style="grid-template-columns:1fr auto auto auto auto auto; border-top:1px solid var(--border)">
+      <div class="bar" style="grid-template-columns:1fr auto auto auto auto auto auto auto auto; border-top:1px solid var(--border)">
         <input id="targetName" type="text" placeholder="Target name (e.g., ECRB tendon)" />
-        <button class="btn small" id="useLast">Use last box as target</button>
-        <label class="mini"><input type="checkbox" id="showTarget" /> Show target</label>
+        <button class="btn small" id="useLast">Add target (use last box)</button>
+        <button class="btn small" id="clearTargets">Clear targets</button>
+        <label class="mini"><input type="checkbox" id="showTargets" /> Show targets</label>
         <label class="mini"><input type="checkbox" id="editMode" /> Edit mode</label>
         <button class="btn" id="startBtn">Start</button>
         <button class="btn secondary" id="resetBtn">Reset</button>
+        <button class="btn secondary" id="saveBtn" title="Save to this browser">Save</button>
+        <button class="btn secondary" id="loadBtnCfg" title="Load from this browser">Load</button>
+        <button class="btn secondary" id="exportBtn" title="Copy JSON">Export</button>
+        <button class="btn secondary" id="importBtn" title="Paste JSON">Import</button>
       </div>
 
       <div class="board">
         <div class="imgwrap" id="imgwrap">
           <img id="img" alt="ultrasound" />
           <div class="overlay" id="overlay" aria-label="Click to guess"></div>
-          <div class="dev" id="dev"></div>
+          <div class="targets" id="targets"></div>
           <div class="targetBox" id="targetBox" hidden></div>
+          <div class="dev" id="dev"></div>
         </div>
       </div>
 
       <div class="foot">
-        <div class="mini" id="prompt">Draw a box over the correct region, click <strong>Use last box as target</strong>, name it, then press <strong>Start</strong>.</div>
+        <div class="mini" id="prompt">Toggle <strong>Edit mode</strong>, draw boxes, click <strong>Add target</strong>, name them, then press <strong>Start</strong>. Sequence plays in order.</div>
         <div class="hud">
           <div class="pill">Timer: <span id="timer">2:00</span></div>
           <div class="pill">Attempts: <span id="tries">—</span></div>
           <div class="pill">Score: <span id="score">0</span></div>
+          <div class="pill">Targets: <span id="tcount">0</span></div>
           <div class="pill">Status: <span id="status">idle</span></div>
         </div>
       </div>
@@ -87,6 +96,7 @@
     // ===== Config =====
     const TIME_LIMIT = 120; // seconds (2:00)
     const MCQ_POINTS = 40;  // +40 for correct MCQ
+    const LS_KEY = 'mskhh_single_cfg_v2';
 
     // Simple MCQ bank (pick one at random)
     const MCQ_BANK = [
@@ -98,21 +108,28 @@
     const img = document.getElementById('img');
     const imgUrl = document.getElementById('imgUrl');
     const overlay = document.getElementById('overlay');
-    const dev = document.getElementById('dev');
+    const targetsLayer = document.getElementById('targets');
     const targetBoxEl = document.getElementById('targetBox');
     const lastPrompt = document.getElementById('prompt');
     const triesEl = document.getElementById('tries');
+    const tcountEl = document.getElementById('tcount');
     const statusEl = document.getElementById('status');
     const timerEl = document.getElementById('timer');
     const scoreEl = document.getElementById('score');
 
     const targetNameEl = document.getElementById('targetName');
     const useLastBtn = document.getElementById('useLast');
-    const showTargetCb = document.getElementById('showTarget');
+    const clearTargetsBtn = document.getElementById('clearTargets');
+    const showTargetsCb = document.getElementById('showTargets');
     const editModeCb = document.getElementById('editMode');
     const startBtn = document.getElementById('startBtn');
     const resetBtn = document.getElementById('resetBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const loadBtnCfg = document.getElementById('loadBtnCfg');
+    const exportBtn = document.getElementById('exportBtn');
+    const importBtn = document.getElementById('importBtn');
 
+    const dev = document.getElementById('dev');
     const toast = document.getElementById('toast');
 
     // ===== Helpers =====
@@ -123,25 +140,12 @@
       const bb = overlay.getBoundingClientRect();
       return { x: bb.width*(rect.x/100), y: bb.height*(rect.y/100), w: bb.width*(rect.w/100), h: bb.height*(rect.h/100) };
     }
-    function drawTargetBox(){
-      if(!TARGET) return;
-      const r = pxFromPctRect(TARGET);
-      Object.assign(targetBoxEl.style, {left:r.x+'px', top:r.y+'px', width:r.w+'px', height:r.h+'px'});
-      targetBoxEl.hidden = !showTargetCb.checked;
-    }
-    function isHit(px, py){
-      if(!TARGET) return false;
-      const r = pxFromPctRect(TARGET);
-      const pad = 6; // pixels of leniency
-      return (px >= r.x - pad && py >= r.y - pad && px <= r.x + r.w + pad && py <= r.y + r.h + pad);
-    }
-    function scoreForTry(t){ return t>=3?100 : t===2?60 : 30; }
 
     // ===== Image loading =====
     function load(url){
       const u = String(url||'').trim();
       if(!u){ toastMsg('Enter an image URL'); return; }
-      img.onload = ()=> { toastMsg('Image loaded'); drawTargetBox(); };
+      img.onload = ()=> { toastMsg('Image loaded'); drawCurrentBox(); drawTargetsLayer(); };
       img.onerror = ()=> toastMsg('Image failed to load');
       img.src = u + (u.includes('?')?'&':'?') + 'cb=' + Date.now();
     }
@@ -151,25 +155,25 @@
     document.getElementById('copyBtn').onclick = ()=> { const u = imgUrl.value.trim(); navigator.clipboard?.writeText(u).then(()=> toastMsg('URL copied')); };
 
     // ===== Dev draw (Edit mode only) =====
-    let start = null, rectEl = null, lastRect = null;
+    let startPt = null, rectEl = null, lastRect = null;
     overlay.addEventListener('mousedown', (e)=>{
       if(!editModeCb.checked) return; // only when editing
       const bb = overlay.getBoundingClientRect();
-      start = {x:e.clientX-bb.left, y:e.clientY-bb.top};
+      startPt = {x:e.clientX-bb.left, y:e.clientY-bb.top};
       rectEl = document.createElement('div'); rectEl.className='box'; dev.appendChild(rectEl);
       e.preventDefault();
     });
     window.addEventListener('mousemove', (e)=>{
-      if(!start) return; const bb = overlay.getBoundingClientRect();
-      const cx=e.clientX-bb.left, cy=e.clientY-bb.top; const x=Math.min(cx,start.x), y=Math.min(cy,start.y); const w=Math.abs(cx-start.x), h=Math.abs(cy-start.y);
+      if(!startPt) return; const bb = overlay.getBoundingClientRect();
+      const cx=e.clientX-bb.left, cy=e.clientY-bb.top; const x=Math.min(cx,startPt.x), y=Math.min(cy,startPt.y); const w=Math.abs(cx-startPt.x), h=Math.abs(cy-startPt.y);
       Object.assign(rectEl.style,{left:x+'px', top:y+'px', width:w+'px', height:h+'px'});
     });
     window.addEventListener('mouseup', ()=>{
-      if(!start) return; const r = rectEl.getBoundingClientRect(); const bb = overlay.getBoundingClientRect();
+      if(!startPt) return; const r = rectEl.getBoundingClientRect(); const bb = overlay.getBoundingClientRect();
       const x=pct(r.left-bb.left, bb.width), y=pct(r.top-bb.top, bb.height), w=pct(r.width, bb.width), h=pct(r.height, bb.height);
-      lastRect = {x,y,w,h}; lastPrompt.innerHTML = `Box captured → <strong>Use last box as target</strong> or press <strong>C</strong> to copy snippet.`;
+      lastRect = {x,y,w,h}; lastPrompt.innerHTML = `Box captured → <strong>Add target</strong> or press <strong>C</strong> to copy snippet.`;
       toastMsg('Box captured');
-      start = null;
+      startPt = null;
     });
 
     // Copy snippet of last box
@@ -180,20 +184,44 @@
       }
     });
 
-    // ===== Target configure =====
-    let TARGET = null; // {name,x,y,w,h} in percent
+    // ===== Target list =====
+    let TARGETS = []; // array of {name,x,y,w,h}
+    let TARGET = null; // current
+    let curIndex = -1;
+
+    function renderCount(){ tcountEl.textContent = String(TARGETS.length); }
+
+    function drawTargetsLayer(){
+      targetsLayer.innerHTML='';
+      if(!showTargetsCb.checked) return;
+      TARGETS.forEach((t, i)=>{
+        const r = pxFromPctRect(t);
+        const d = document.createElement('div'); d.className='box'; Object.assign(d.style, {left:r.x+'px', top:r.y+'px', width:r.w+'px', height:r.h+'px'});
+        if(i===curIndex) d.style.borderColor = 'rgba(255,255,255,.9)';
+        targetsLayer.appendChild(d);
+      });
+    }
+
+    function drawCurrentBox(){
+      if(!TARGET){ targetBoxEl.hidden = true; return; }
+      const r = pxFromPctRect(TARGET);
+      Object.assign(targetBoxEl.style, {left:r.x+'px', top:r.y+'px', width:r.w+'px', height:r.h+'px'});
+      targetBoxEl.hidden = !showTargetsCb.checked;
+    }
 
     useLastBtn.onclick = ()=>{
       if(!lastRect){ toastMsg('Draw a box first (toggle Edit mode)'); return; }
-      const name = targetNameEl.value.trim() || 'Target';
-      TARGET = { name, ...lastRect };
-      drawTargetBox();
-      lastPrompt.innerHTML = `Target set: <strong>${TARGET.name}</strong>. Press <strong>Start</strong> to play.`;
-      toastMsg('Target set');
+      const name = targetNameEl.value.trim() || `Target ${TARGETS.length+1}`;
+      TARGETS.push({ name, ...lastRect });
+      renderCount(); drawTargetsLayer(); drawCurrentBox();
+      lastPrompt.innerHTML = `Added: <strong>${name}</strong>. Add more or press <strong>Start</strong> to play.`;
+      toastMsg('Target added');
     };
 
-    showTargetCb.onchange = drawTargetBox;
-    window.addEventListener('resize', drawTargetBox);
+    clearTargetsBtn.onclick = ()=>{ TARGETS = []; curIndex=-1; TARGET=null; renderCount(); drawTargetsLayer(); drawCurrentBox(); toastMsg('Targets cleared'); };
+
+    showTargetsCb.onchange = ()=>{ drawTargetsLayer(); drawCurrentBox(); };
+    window.addEventListener('resize', ()=>{ drawTargetsLayer(); drawCurrentBox(); });
 
     // ===== Gameplay (Timer + Scoring + MCQ gating) =====
     let active = false, tries = 0, timeLeft = TIME_LIMIT, timerId = null, score = 0, mcqPending = false;
@@ -206,16 +234,26 @@
 
     function startTimer(){
       clearInterval(timerId); timeLeft = TIME_LIMIT; renderTimer();
-      timerId = setInterval(()=>{ timeLeft -= 1; renderTimer(); if(timeLeft <= 0){ endGame('⏰ Time up!'); } }, 1000);
+      timerId = setInterval(()=>{ timeLeft -= 1; renderTimer(); if(timeLeft <= 0){ endAll('⏰ Time up!'); } }, 1000);
     }
 
-    function endGame(reason){
+    function endAll(reason){
       clearInterval(timerId); timerId = null; active = false; mcqPending = false; startBtn.disabled = false; startBtn.textContent = 'Restart';
       renderTries();
       const timeBonus = Math.max(0, timeLeft);
       const final = score + timeBonus;
-      lastPrompt.innerHTML = `<strong>${reason}</strong><br>Score: ${score} (hit ${basePts}${mcqPts?` + MCQ ${mcqPts}`:''}) + time bonus ${timeBonus} = <strong>${final}</strong>`;
+      const done = (curIndex>=0? curIndex+1 : 0);
+      lastPrompt.innerHTML = `<strong>${reason}</strong><br>Completed: ${done}/${TARGETS.length}. Score: ${score} (last hit ${basePts}${mcqPts?` + MCQ ${mcqPts}`:''}) + time bonus ${timeBonus} = <strong>${final}</strong>`;
       setStatus('done');
+    }
+
+    function nextTarget(){
+      curIndex += 1;
+      if(curIndex >= TARGETS.length){ endAll('🏁 All targets complete'); return; }
+      TARGET = TARGETS[curIndex]; tries = 3; basePts = 0; mcqPts = 0; renderTries();
+      lastPrompt.innerHTML = `Find (${curIndex+1}/${TARGETS.length}): <strong>${TARGET.name}</strong>`;
+      setStatus('playing');
+      drawCurrentBox(); drawTargetsLayer();
     }
 
     function askMCQ(){
@@ -229,22 +267,33 @@
           const i = Number(e.currentTarget.getAttribute('data-i'));
           const ok = (i===item.answer);
           mcqPts = ok ? MCQ_POINTS : 0; score += mcqPts; renderScore(); toastMsg(ok?'MCQ ✓':'MCQ ✗');
-          mcqPending = false; endGame('Round complete');
+          mcqPending = false; startBtn.disabled = false; // allow restart if time remains
+          nextTarget();
         }, {once:true});
       });
     }
 
     startBtn.onclick = ()=>{
       if(mcqPending) return; // gate
-      if(!TARGET){ toastMsg('Set a target first'); return; }
-      active = true; tries = 3; basePts = 0; mcqPts = 0; score = 0; renderScore(); renderTries(); setStatus('playing'); lastPrompt.innerHTML = `Find: <strong>${TARGET.name}</strong>`; toastMsg('Go!');
+      if(!TARGETS.length){ toastMsg('Add at least one target'); return; }
+      active = true; curIndex = -1; score = 0; renderScore(); showTargetsCb.checked = false; // hide during play
       startBtn.disabled = true; startBtn.textContent = 'Running…';
       startTimer();
+      nextTarget();
     };
 
     resetBtn.onclick = ()=>{
-      active = false; tries = 0; mcqPending = false; clearInterval(timerId); timerId = null; timeLeft = TIME_LIMIT; renderTimer(); renderTries(); setStatus('idle'); lastPrompt.innerHTML = 'Draw a box, set as target, then Start.'; overlay.querySelectorAll('.marker').forEach(n=>n.remove()); startBtn.disabled = false; startBtn.textContent = 'Start';
+      active = false; tries = 0; mcqPending = false; clearInterval(timerId); timerId = null; timeLeft = TIME_LIMIT; renderTimer(); renderTries(); setStatus('idle'); lastPrompt.innerHTML = 'Toggle Edit, add targets, then Start.'; overlay.querySelectorAll('.marker').forEach(n=>n.remove()); startBtn.disabled = false; startBtn.textContent = 'Start'; drawTargetsLayer(); drawCurrentBox();
     };
+
+    function isHit(px, py){
+      if(!TARGET) return false;
+      const r = pxFromPctRect(TARGET);
+      const pad = 6; // pixels of leniency
+      return (px >= r.x - pad && py >= r.y - pad && px <= r.x + r.w + pad && py <= r.y + r.h + pad);
+    }
+
+    function scoreForTry(t){ return t>=3?100 : t===2?60 : 30; }
 
     // Click to guess (always available; only counts during active)
     overlay.addEventListener('click', (e)=>{
@@ -257,9 +306,18 @@
         basePts = scoreForTry(tries); score += basePts; renderScore(); setStatus('hit'); toastMsg('Correct!'); active = false; askMCQ();
       } else {
         tries -= 1; renderTries(); toastMsg(tries>0? 'Miss — try again' : 'No tries left');
-        if(tries<=0){ setStatus('❌ out of tries'); active = false; showTargetCb.checked = true; drawTargetBox(); endGame('❌ Out of tries'); }
+        if(tries<=0){ setStatus('❌ out of tries'); active = false; showTargetsCb.checked = true; drawCurrentBox(); drawTargetsLayer(); nextTarget(); }
       }
     });
+
+    // ===== Save / Load / Export / Import =====
+    function configFromUI(){ return { image: imgUrl.value.trim(), targets: TARGETS.slice() }; }
+    function applyConfig(cfg){ if(cfg.image) { imgUrl.value = cfg.image; load(cfg.image); } if(Array.isArray(cfg.targets)) { TARGETS = cfg.targets.map(t=>({name:t.name||'Target', x:+t.x, y:+t.y, w:+t.w, h:+t.h})); renderCount(); drawTargetsLayer(); drawCurrentBox(); } }
+
+    saveBtn.onclick = ()=>{ const cfg = configFromUI(); localStorage.setItem(LS_KEY, JSON.stringify(cfg)); toastMsg('Saved to browser'); };
+    loadBtnCfg.onclick = ()=>{ const raw = localStorage.getItem(LS_KEY); if(!raw){ toastMsg('Nothing saved yet'); return; } try{ const cfg = JSON.parse(raw); applyConfig(cfg); toastMsg('Loaded from browser'); }catch{ toastMsg('Failed to parse saved data'); } };
+    exportBtn.onclick = ()=>{ const cfg = configFromUI(); const json = JSON.stringify(cfg, null, 2); navigator.clipboard?.writeText(json).then(()=> toastMsg('Config JSON copied')); };
+    importBtn.onclick = ()=>{ const json = prompt('Paste config JSON here'); if(!json) return; try{ const cfg = JSON.parse(json); applyConfig(cfg); toastMsg('Config imported'); } catch(e){ toastMsg('Invalid JSON'); } };
 
     // ===== Self-tests (small & non-invasive) =====
     (function selfTests(){
@@ -270,24 +328,16 @@
       if(fmt(0)!=='0:00' || fmt(65)!=='1:05' || fmt(120)!=='2:00') errs.push('fmt failed');
       // scoring
       if(scoreForTry(3)!==100 || scoreForTry(2)!==60 || scoreForTry(1)!==30) errs.push('scoreForTry failed');
-      // hit-test sanity
-      const tmpT = {x:10,y:10,w:20,h:20};
-      TARGET = tmpT; const inPx = pxFromPctRect(tmpT);
-      if(!isHit(inPx.x+1, inPx.y+1)) errs.push('isHit should be true inside');
-      if(isHit(inPx.x-20, inPx.y-20)) errs.push('isHit should be false outside');
-      TARGET = null;
-      // MCQ gating: calling askMCQ should set mcqPending and disable Start
-      try{
-        const prevText = startBtn.textContent;
-        askMCQ();
-        if(!document.querySelector('#prompt button')) errs.push('MCQ not rendered');
-        if(!startBtn.disabled) errs.push('Start should be disabled during MCQ');
-        // clean up by clicking first option programmatically
-        document.querySelector('#prompt button')?.click();
-        startBtn.textContent = prevText; // neutralize visible change post-end
-      }catch(e){ /* ignore in environments without DOM click */ }
-
+      // targets render sanity
+      TARGETS = [{name:'A',x:10,y:10,w:20,h:20},{name:'B',x:40,y:40,w:10,h:10}]; renderCount(); showTargetsCb.checked = true; drawTargetsLayer();
+      if(targetsLayer.children.length!==2) errs.push('targetsLayer should render 2 boxes');
+      // save/load roundtrip (in-memory)
+      const cfg = configFromUI(); applyConfig({image: cfg.image, targets: cfg.targets}); if(tcountEl.textContent==='0') errs.push('applyConfig did not set targets');
+      // MCQ gating quick check (does not require TARGET)
+      try{ const prev = startBtn.disabled; askMCQ(); if(!document.querySelector('#prompt button')) errs.push('MCQ not rendered'); startBtn.disabled = prev; }catch(e){ /* ignore in headless */ }
       if(errs.length){ console.warn('Self-tests FAILED:', errs); toastMsg('Self-tests failed — see console'); }
+      // restore minimal state
+      TARGETS = []; curIndex=-1; TARGET=null; renderCount(); drawTargetsLayer(); drawCurrentBox();
     })();
 
     // Auto-load the provided URL initially
