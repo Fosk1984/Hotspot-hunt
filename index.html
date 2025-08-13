@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Canvas refreshed with env-safe build: defines IS_CANVAS/BASE_PATH and keeps all tests. -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -165,10 +166,13 @@
           <code id="pathConfigured">assets/…</code>
           <div class="mini" style="margin-top:8px">Resolved URL</div>
           <code id="pathResolved">https://…</code>
-          <div style="display:flex; gap:8px; margin-top:10px">
+          <div class="mini" style="margin-top:8px">Tried URLs</div>
+          <div id="pathTried" class="mini" style="max-height:120px; overflow:auto; border:1px solid var(--border); padding:6px; border-radius:8px"></div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
             <button class="btn" id="openResolved">Open URL</button>
             <button class="btn" id="copyResolved">Copy URL</button>
             <button class="btn secondary" id="tryReload">Try reload</button>
+            <button class="btn secondary" id="showThisCase">Show this case</button>
           </div>
           <p class="mini" style="margin-top:10px">Quick checklist:
             <br>• File exists at that path
@@ -191,6 +195,12 @@
   </dialog>
 
   <script>
+    // ========= Environment flags (fixes ReferenceError: IS_CANVAS & ensures BASE_PATH) =========
+    const IS_CANVAS = /web-sandbox\.oaiusercontent\.com$/i.test(location.hostname);
+    const IS_GHPAGES = /\.github\.io$/i.test(location.hostname);
+    // Directory of current page (always ends with '/') e.g. '/Hotspot-hunt/' on GH Pages
+    const BASE_PATH = (location.pathname.endsWith('/') ? location.pathname : location.pathname.replace(/[^/]+$/, '/'));
+
     // ========= Demo background so the file works without assets =========
     const DEMO_SVG_BG = encodeURIComponent(`
       <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 675'>
@@ -226,6 +236,7 @@
         image: 'https://fosk1984.github.io/Hotspot-hunt/assets/compartment2.png',
         targets: [
           { id: 'gt', name: 'Greater tuberosity (footprint)', x: 52, y: 68, w: 20, h: 10 },
+          { id: 'ss', name: 'Supraspinatus tendon', x: 40, y: 60, w: 35, h: 10 },
         ],
         mcq_regular: [{ q: 'Probe orientation?', options: ['Long-axis','Short-axis','Axial'], answer: 0 }],
         mcq_hard:    [{ q: 'Best way to reduce anisotropy?', options: ['Heel-toe','Increase depth','Lower PRF'], answer: 0 }]
@@ -286,10 +297,12 @@
     const pathConfigured = document.getElementById('pathConfigured');
     const pathResolved = document.getElementById('pathResolved');
     const pathPreview = document.getElementById('pathPreview');
+    const pathTried = document.getElementById('pathTried');
     const openResolved = document.getElementById('openResolved');
     const copyResolved = document.getElementById('copyResolved');
     const tryReload = document.getElementById('tryReload');
     const closePathDlg = document.getElementById('closePathDlg');
+    const showThisCaseBtn = document.getElementById('showThisCase');
 
     const modeRegularBtn = document.getElementById('mode-regular');
     const modeHardBtn = document.getElementById('mode-hard');
@@ -318,21 +331,55 @@
     }
 
     function ensureImage(src){
-      return new Promise(res=>{
-        const resolved = resolveSrc(src);
-        if(!resolved){
-          console.warn('Image path is empty; using demo background');
-          toastMsg('Image path is empty — using demo background');
-          return res({src: `data:image/svg+xml;charset=utf-8,${DEMO_SVG_BG}`, ok: false, resolved:''});
+      return new Promise((res)=>{
+        const original = String(src||'');
+        const enc = s => s.replace(/ /g, '%20');
+        const candidates = [];
+        const push = u => { if(u && !candidates.includes(u)) candidates.push(u); };
+        const resolved = resolveSrc(original);
+        push(resolved);
+        if(original.includes(' ')) push(resolveSrc(enc(original)));
+        if(/^assets\//i.test(original)){
+          // Try with site origin + base path (handles GitHub Pages subpath like /Hotspot-hunt/)
+          push(`${window.location.origin}${BASE_PATH}${original}`);
+          // Also try origin root (legacy)
+          push(`${window.location.origin}/${original}`);
         }
-        const test = new Image();
-        test.onload = ()=> res({src: resolved, ok: true, resolved});
-        test.onerror = ()=>{
-          console.warn('Image not found', {requested: src, resolved});
-          toastMsg(`Image not found: ${src} — using demo background`);
-          res({src: `data:image/svg+xml;charset=utf-8,${DEMO_SVG_BG}`, ok: false, resolved});
-        };
-        test.src = resolved;
+        const m = original.match(/\.([A-Za-z0-9]+)$/);
+        if(m){
+          const ext = m[1].toLowerCase();
+          const alt = (newExt)=> resolveSrc(original.slice(0, -ext.length) + newExt);
+          if(ext==='png') push(alt('PNG'));
+          if(ext==='jpg') push(alt('JPG'));
+          if(ext==='jpeg') push(alt('JPEG'));
+        }
+        function tryNext(i){
+          if(i>=candidates.length){
+            console.warn('Image not found after trying candidates', {requested: original, tried: candidates});
+            toastMsg(`Image not found: ${original} — tried ${candidates.length} URL(s). Click “Fix image path”.`);
+            return res({src: `data:image/svg+xml;charset=utf-8,${DEMO_SVG_BG}`, ok: false, resolved: resolved, tried: candidates});
+          }
+          const url = candidates[i];
+          const test = new Image();
+          const isData = /^data:|^blob:/i.test(url);
+          const withBust = isData ? url : url + (url.includes('?')?'&':'?') + 'cb=' + Date.now();
+          test.onload = ()=> res({src: withBust, ok: true, resolved: url, tried: candidates});
+          test.onerror = ()=>{
+            // Fallback: try fetching (helps with some caching/CDN edge cases)
+            fetch(url, {method:'GET', cache:'no-store'}).then(r=>{
+              if(!r.ok) throw new Error('fetch failed');
+              const ct = r.headers.get('content-type')||'';
+              if(!/image\//i.test(ct)) throw new Error('not an image');
+              return r.blob();
+            }).then(blob=>{
+              const obj = URL.createObjectURL(blob);
+              res({src: obj, ok: true, resolved: url, blob: true, tried: candidates});
+              setTimeout(()=> URL.revokeObjectURL(obj), 30000);
+            }).catch(()=> tryNext(i+1));
+          };
+          test.src = withBust;
+        }
+        tryNext(0);
       });
     }
 
@@ -368,7 +415,7 @@
       if(state.queue.length === 0){ endGame('🏁 All tasks complete!'); return; }
       state.current = state.queue.shift(); state.lives = 3; renderLives(state.lives);
       const c = CASES[state.current.caseIndex]; const t = c.targets[state.current.targetIndex];
-      const {src, ok, resolved} = await ensureImage(c.image);
+      const {src, ok} = await ensureImage(c.image);
       imgEl.src = src;
       if(!ok){
         promptEl.innerHTML = `<strong>Image not found</strong> for <code>${c.image}</code>. Check filename, extension & path (case‑sensitive). A demo background is shown.`;
@@ -469,8 +516,18 @@
       // time format
       if(fmt(600) !== '10:00') errs.push('fmt(600) should be 10:00');
       if(fmt(0) !== '0:00') errs.push('fmt(0) should be 0:00');
+      if(fmt(65) !== '1:05') errs.push('fmt(65) should be 1:05');
       // shuffle sanity
       const arr = [1,2,3,4]; const sh = shuffle(arr.slice()); if(sh.length!==4) errs.push('shuffle length');
+      // env flags & path sanity
+      if(typeof IS_CANVAS === 'undefined') errs.push('IS_CANVAS should be defined');
+      if(typeof BASE_PATH === 'undefined') errs.push('BASE_PATH should be defined');
+      if(BASE_PATH && !/\/$/.test(BASE_PATH)) errs.push('BASE_PATH should end with "/"');
+      try{
+        const base = 'https://example.com/Hotspot-hunt/index.html';
+        const href = new URL('assets/x.png', base).href;
+        if(!/\/Hotspot-hunt\/assets\/x\.png$/.test(href)) errs.push('URL resolution for repo subpath failed');
+      }catch(e){ errs.push('URL resolution threw'); }
       // case-bank validation
       const v = validateCaseBank(); if(!v.ok) errs.push(...v.errors);
       // ensureImage should succeed for a data URL and gracefully fallback for a missing path
@@ -478,6 +535,7 @@
       if(!okData.ok) errs.push('ensureImage should return ok=true for data URL');
       const miss = await ensureImage('assets/__definitely_missing__.png');
       if(miss.ok) errs.push('ensureImage should return ok=false for missing asset');
+      if(!Array.isArray(miss.tried) || miss.tried.length===0) errs.push('ensureImage should include tried candidates');
       // MCQ gating: when an MCQ exists, Next must remain disabled until answered
       try{
         const hasMCQ = ((CASES[0].mcq_regular && CASES[0].mcq_regular.length) || (CASES[0].mcq_hard && CASES[0].mcq_hard.length));
@@ -528,13 +586,14 @@
     }
 
     // ========= Path helper =========
-    function openPathHelper(){
+    async function openPathHelper(){
       const ci = state.current?.caseIndex ?? 0;
       const configured = CASES[ci].image;
-      const resolved = resolveSrc(configured);
+      const test = await ensureImage(configured);
       pathConfigured.textContent = configured;
-      pathResolved.textContent = resolved || '(empty)';
-      pathPreview.src = resolved || `data:image/svg+xml;charset=utf-8,${DEMO_SVG_BG}`;
+      pathResolved.textContent = test.resolved || resolveSrc(configured) || '(empty)';
+      pathPreview.src = test.src || `data:image/svg+xml;charset=utf-8,${DEMO_SVG_BG}`;
+      pathTried.innerHTML = (test.tried||[]).map(u=>`<div><code>${u}</code></div>`).join('') || '<em>none</em>';
       pathDlg.showModal();
     }
 
@@ -545,6 +604,14 @@
       const {src} = await ensureImage(CASES[ci].image);
       imgEl.src = src;
       toastMsg('Tried reloading image');
+    });
+
+    showThisCaseBtn?.addEventListener('click', async ()=>{
+      const ci = state.current?.caseIndex ?? 0;
+      const {src} = await ensureImage(CASES[ci].image);
+      imgEl.src = src;
+      drawDevBoxes();
+      toastMsg('Showing this case image');
     });
 
     // ========= Events =========
@@ -597,4 +664,3 @@
   </script>
 </body>
 </html>
-
