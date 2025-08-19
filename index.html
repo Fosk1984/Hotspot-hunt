@@ -234,6 +234,20 @@
     const exportBtn = document.getElementById('exportBtn');
     const importBtn = document.getElementById('importBtn');
 
+    // Inject a teacher-only Demo button next to Start/Reset to quickly verify the game works
+    let demoBtn = null;
+    (function addDemoButton(){
+      try{
+        const ctrlBar = startBtn.closest('.bar');
+        if(!ctrlBar) return;
+        demoBtn = document.createElement('button');
+        demoBtn.className = 'btn secondary cfg';
+        demoBtn.id = 'demoBtn';
+        demoBtn.textContent = 'Load Demo';
+        ctrlBar.insertBefore(demoBtn, saveBtn); // place before Save
+      }catch(e){ /* ignore */ }
+    })();
+
     // Case controls
     const caseSel = document.getElementById('caseSel');
     const caseTitleInput = document.getElementById('caseTitle');
@@ -558,6 +572,7 @@
     function startTimer(){
       clearInterval(timerId); timeLeft = TIME_LIMIT; renderTimer();
       applyTeacherVisibility();
+      if(truthy(params.get('demo'))) { loadDemo(); }
       timerId = setInterval(()=>{ timeLeft -= 1; renderTimer(); if(timeLeft <= 0){ endAll('⏰ Time up!'); } }, 1000);
     }
 
@@ -672,6 +687,23 @@
         if(tries<=0){ setStatus('❌ out of tries'); active = false; showTargetsCb.checked = true; drawCurrentBox(); drawTargetsLayer(); nextTarget(); }
       }
     });
+
+    // ===== Demo loader (teacher-only) =====
+    function loadDemo(){
+      CASES = [{
+        title: 'Wrist — Extensor compartment (demo)',
+        image: 'https://fosk1984.github.io/Hotspot-hunt/assets/compartment2.png',
+        targets: [ { name:'Demo hotspot', x:48, y:42, w:10, h:10 } ]
+      }];
+      setCaseIndex(0);
+      load(CASES[0].image);
+      showTargetsCb.checked = false;
+      renderCaseUI();
+      updateStartAvailability();
+      toastMsg('Demo case loaded — press Start');
+      lastPrompt.innerHTML = 'Demo loaded. Press <strong>Start</strong> to play.';
+    }
+    if (demoBtn) demoBtn.onclick = ()=>{ if(!isTeacher()) { toastMsg('Teacher only'); return; } loadDemo(); };
 
     // ===== Save / Load / Export / Import =====
     function configFromUI(){
