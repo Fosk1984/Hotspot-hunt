@@ -41,13 +41,17 @@
 
     .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:20px; background:rgba(0,0,0,.6); border:1px solid var(--border); padding:8px 12px; border-radius:10px; color:var(--ink)}
 
-    /* Clean student view */
-    .clean .cfg { display:none !important; }
-    .clean .mini.tip { display:none !important; }
-    /* Teacher can see config even while in Clean */
-    .teacher.clean .cfg { display:initial !important; }
+    /* Clean student view & teacher gating */
+    /* Config controls are hidden for students at all times */
+    .cfg { display:none !important; }
+    /* Teacher can see config (regardless of Clean) */
+    .teacher .cfg { display:initial !important; }
+    /* Hide the Clean toggle for students; teacher only */
+    #cleanBtn { display:none !important; }
+    .teacher #cleanBtn { display:inline-block !important; }
 
-    /* Teacher toolbar */
+    /* Students still get the cleaner UI hints hidden in Clean */
+    .clean .mini.tip { display:none !important; }
     #teacherBar{position:fixed; right:12px; top:12px; display:none; gap:8px; align-items:center; z-index:60}
     .teacher #teacherBar{display:flex}
     #teacherBar .btn.small{padding:4px 8px}
@@ -204,6 +208,7 @@
     ];
 
     // ===== Elements =====
+    const isTeacher = () => document.body.classList.contains('teacher');
     const img = document.getElementById('img');
     const imgUrl = document.getElementById('imgUrl');
     const overlay = document.getElementById('overlay');
@@ -253,6 +258,14 @@
     const helpClose = document.getElementById('helpClose');
     const helpDont = document.getElementById('helpDont');
 
+    // Ensure teacher-only UI is enforced even if CSS fails to load (JS fallback)
+    function applyTeacherVisibility(){
+      const t = isTeacher();
+      document.querySelectorAll('.cfg').forEach(el=>{ el.style.display = t ? '' : 'none'; });
+      if (cleanBtn) cleanBtn.style.display = t ? 'inline-block' : 'none';
+      if (teacherBar) teacherBar.style.display = t ? 'flex' : 'none';
+    }
+
     function openHelp(){ if(helpModal){ helpModal.hidden = false; document.body.classList.add('noScroll'); } }
     function closeHelp(){ if(helpModal){ helpModal.hidden = true; document.body.classList.remove('noScroll'); try{ if(helpDont?.checked) localStorage.setItem('mskhh_seen_help_v1','1'); }catch{} } }
     helpBtn?.addEventListener('click', openHelp);
@@ -266,6 +279,7 @@
     const KIOSK = truthy(params.get('kiosk'));
     const ADMIN = truthy(params.get('admin')) || truthy(params.get('unlock')) || false; // admin override for kiosk
     if (KIOSK) { document.body.classList.add('kiosk','clean'); }
+    applyTeacherVisibility();
 
     // Clean view toggle
     if (cleanBtn) {
@@ -363,9 +377,10 @@
       if (document.body.classList.contains('kiosk') && ADMIN) {
         document.body.classList.remove('kiosk');
       }
+      applyTeacherVisibility();
       updateStartAvailability();
     }
-    function exitTeacherMode(){ document.body.classList.remove('teacher'); updateStartAvailability(); }
+    function exitTeacherMode(){ document.body.classList.remove('teacher'); applyTeacherVisibility(); updateStartAvailability(); }
 
     (function initSecretTriggers(){
       const triggersEnabled = !KIOSK || ADMIN;
@@ -457,14 +472,14 @@
       img.onerror = ()=> toastMsg('Image failed to load');
       img.src = u + (u.includes('?')?'&':'?') + 'cb=' + Date.now();
     }
-    document.getElementById('loadBtn').onclick = ()=>{ const u = imgUrl.value; if(CASES[caseIndex]) CASES[caseIndex].image = u; load(u); };
-    document.getElementById('openBtn').onclick = ()=> { const u = imgUrl.value.trim(); if(u) window.open(u, '_blank'); };
-    document.getElementById('copyBtn').onclick = ()=> { const u = imgUrl.value.trim(); navigator.clipboard?.writeText(u).then(()=> toastMsg('URL copied')); };
+    document.getElementById('loadBtn').onclick = ()=>{ if(!isTeacher()) { toastMsg('Teacher only'); return; } const u = imgUrl.value; if(CASES[caseIndex]) CASES[caseIndex].image = u; load(u); };
+    document.getElementById('openBtn').onclick = ()=> { if(!isTeacher()) { toastMsg('Teacher only'); return; } const u = imgUrl.value.trim(); if(u) window.open(u, '_blank'); };
+    document.getElementById('copyBtn').onclick = ()=> { if(!isTeacher()) { toastMsg('Teacher only'); return; } const u = imgUrl.value.trim(); navigator.clipboard?.writeText(u).then(()=> toastMsg('URL copied')); };
 
     // ===== Dev draw (Edit mode only) =====
     let startPt = null, rectEl = null, lastRect = null;
     overlay.addEventListener('mousedown', (e)=>{
-      if(!editModeCb.checked) return; // only when editing
+      if(!isTeacher() || !editModeCb.checked) return; // teacher-only editing
       const bb = overlay.getBoundingClientRect();
       startPt = {x:e.clientX-bb.left, y:e.clientY-bb.top};
       rectEl = document.createElement('div'); rectEl.className='box'; dev.appendChild(rectEl);
@@ -523,20 +538,9 @@
       renderCount(); drawTargetsLayer(); drawCurrentBox(); updateStartAvailability();
     }
 
-    useLastBtn.onclick = ()=>{
-      if(!lastRect){ toastMsg('Draw a box first (toggle Edit mode)'); return; }
-      const name = targetNameEl.value.trim() || `Target ${(TARGETS||[]).length+1}`;
-      TARGETS.push({ name, ...lastRect });
-      renderCount(); drawTargetsLayer(); drawCurrentBox(); updateStartAvailability();
-      lastPrompt.innerHTML = `Added: <strong>${name}</strong>. Add more or press <strong>Start</strong> to play.`;
-      toastMsg('Target added');
-    };
+    useLastBtn.onclick = ()=>{ if(!isTeacher()) { toastMsg('Teacher only'); return; } if(!lastRect){ toastMsg('Draw a box first (toggle Edit mode)'); return; } const name = targetNameEl.value.trim() || `Target ${(TARGETS||[]).length+1}`; TARGETS.push({ name, ...lastRect }); renderCount(); drawTargetsLayer(); drawCurrentBox(); updateStartAvailability(); lastPrompt.innerHTML = `Added: <strong>${name}</strong>. Add more or press <strong>Start</strong> to play.`; toastMsg('Target added'); };
 
-    clearTargetsBtn.onclick = ()=>{
-      clearTargetsForCase(caseIndex);
-      toastMsg('Targets cleared for this image');
-      lastPrompt.innerHTML = 'Targets cleared. Toggle <strong>Edit mode</strong>, draw a new box, then press <strong>Add target</strong>.';
-    };
+    clearTargetsBtn.onclick = ()=>{ if(!isTeacher()) { toastMsg('Teacher only'); return; } clearTargetsForCase(caseIndex); toastMsg('Targets cleared for this image'); lastPrompt.innerHTML = 'Targets cleared. Toggle <strong>Edit mode</strong>, draw a new box, then press <strong>Add target</strong>.'; };
 
     showTargetsCb.onchange = ()=>{ drawTargetsLayer(); drawCurrentBox(); };
     window.addEventListener('resize', ()=>{ drawTargetsLayer(); drawCurrentBox(); });
@@ -553,6 +557,7 @@
 
     function startTimer(){
       clearInterval(timerId); timeLeft = TIME_LIMIT; renderTimer();
+      applyTeacherVisibility();
       timerId = setInterval(()=>{ timeLeft -= 1; renderTimer(); if(timeLeft <= 0){ endAll('⏰ Time up!'); } }, 1000);
     }
 
@@ -682,19 +687,19 @@
       setCaseIndex(0);
     }
 
-    saveBtn.onclick = ()=>{ const cfg = configFromUI(); localStorage.setItem(LS_KEY, JSON.stringify(cfg)); toastMsg('Saved to browser'); };
-    loadBtnCfg.onclick = ()=>{ const raw = localStorage.getItem(LS_KEY); if(!raw){ toastMsg('Nothing saved yet'); return; } try{ const cfg = JSON.parse(raw); applyConfig(cfg); toastMsg('Loaded from browser'); }catch{ toastMsg('Failed to parse saved data'); } };
-    exportBtn.onclick = ()=>{ const cfg = configFromUI(); const json = JSON.stringify(cfg, null, 2); navigator.clipboard?.writeText(json).then(()=> toastMsg('Config JSON copied')); };
-    importBtn.onclick = ()=>{ const json = prompt('Paste config JSON here'); if(!json) return; try{ const cfg = JSON.parse(json); applyConfig(cfg); toastMsg('Config imported'); } catch(e){ toastMsg('Invalid JSON'); } };
+    saveBtn.onclick = ()=>{ if(!isTeacher()) { toastMsg('Teacher only'); return; } const cfg = configFromUI(); localStorage.setItem(LS_KEY, JSON.stringify(cfg)); toastMsg('Saved to browser'); };
+    loadBtnCfg.onclick = ()=>{ if(!isTeacher()) { toastMsg('Teacher only'); return; } const raw = localStorage.getItem(LS_KEY); if(!raw){ toastMsg('Nothing saved yet'); return; } try{ const cfg = JSON.parse(raw); applyConfig(cfg); toastMsg('Loaded from browser'); }catch{ toastMsg('Failed to parse saved data'); } };
+    exportBtn.onclick = ()=>{ if(!isTeacher()) { toastMsg('Teacher only'); return; } const cfg = configFromUI(); const json = JSON.stringify(cfg, null, 2); navigator.clipboard?.writeText(json).then(()=> toastMsg('Config JSON copied')); };
+    importBtn.onclick = ()=>{ if(!isTeacher()) { toastMsg('Teacher only'); return; } const json = prompt('Paste config JSON here'); if(!json) return; try{ const cfg = JSON.parse(json); applyConfig(cfg); toastMsg('Config imported'); } catch(e){ toastMsg('Invalid JSON'); } };
 
     // ===== Case UI wiring =====
-    caseSel.addEventListener('change', ()=>{ setCaseIndex(parseInt(caseSel.value||'0',10)||0); });
-    caseTitleInput.addEventListener('input', ()=>{ if(CASES[caseIndex]){ CASES[caseIndex].title = caseTitleInput.value; renderCaseUI(); } });
-    addCaseBtn.addEventListener('click', ()=> addCase(false));
-    dupCaseBtn.addEventListener('click', ()=> addCase(true));
-    delCaseBtn.addEventListener('click', ()=> deleteCase());
-    prevCaseBtn.addEventListener('click', ()=> setCaseIndex(caseIndex-1));
-    nextCaseBtn.addEventListener('click', ()=> setCaseIndex(caseIndex+1));
+    caseSel.addEventListener('change', ()=>{ if(!isTeacher()) return; setCaseIndex(parseInt(caseSel.value||'0',10)||0); });
+    caseTitleInput.addEventListener('input', ()=>{ if(!isTeacher()) return; if(CASES[caseIndex]){ CASES[caseIndex].title = caseTitleInput.value; renderCaseUI(); } });
+    addCaseBtn.addEventListener('click', ()=> { if(!isTeacher()) { toastMsg('Teacher only'); return; } addCase(false); });
+    dupCaseBtn.addEventListener('click', ()=> { if(!isTeacher()) { toastMsg('Teacher only'); return; } addCase(true); });
+    delCaseBtn.addEventListener('click', ()=> { if(!isTeacher()) { toastMsg('Teacher only'); return; } deleteCase(); });
+    prevCaseBtn.addEventListener('click', ()=> { if(!isTeacher()) { toastMsg('Teacher only'); return; } setCaseIndex(caseIndex-1); });
+    nextCaseBtn.addEventListener('click', ()=> { if(!isTeacher()) { toastMsg('Teacher only'); return; } setCaseIndex(caseIndex+1); });
 
     // ===== Self-tests (small & non-invasive) =====
     (function selfTests(){
@@ -732,61 +737,3 @@
         active=false; curIndex=-1; playCase=-1; tries=0; nextTarget();
         if(!active) errs.push('nextTarget should set active=true');
         if(tries!==3) errs.push('nextTarget should reset tries to 3');
-        // advance to next case boundary
-        curIndex=0; playCase=0; nextTarget(); if(playCase!==1 || curIndex!==0) errs.push('nextTarget should advance to next case');
-      }catch(e){ /* ignore */ }
-
-      // Clear targets must fully remove from UI/state
-      try{
-        CASES = [{ title:'Only', image:'x', targets:[{name:'A',x:10,y:10,w:10,h:10},{name:'B',x:20,y:20,w:10,h:10}] }];
-        setCaseIndex(0); showTargetsCb.checked = true; drawTargetsLayer();
-        if(targetsLayer.children.length!==2) errs.push('precondition: 2 boxes expected');
-        clearTargetsForCase(0);
-        if(CASES[0].targets.length!==0) errs.push('clearTargetsForCase did not empty array');
-        if(targetsLayer.children.length!==0) errs.push('targets layer not cleared after clear');
-        if(tcountEl.textContent!=='0') errs.push('tcount not updated after clear');
-      }catch(e){ /* ignore */ }
-
-      if(errs.length){ console.warn('Self-tests FAILED:', errs); toastMsg('Self-tests failed — see console'); }
-      // restore minimal state for app usage
-      CASES = [{title:'Image 1', image: imgUrl.value, targets: []}]; setCaseIndex(0); TARGET=null; curIndex=-1; playCase=-1; drawTargetsLayer(); drawCurrentBox();
-    })();
-
-    // ===== Boot: load saved or migrate legacy; then show help =====
-    (function boot(){
-      let loaded = false;
-      try{
-        const raw = localStorage.getItem(LS_KEY);
-        if(raw){ const cfg = JSON.parse(raw); applyConfig(cfg); loaded = true; }
-      }catch{ /* ignore parse */ }
-
-      if(!loaded){
-        for(const k of LEGACY_KEYS){
-          try{
-            const r = localStorage.getItem(k);
-            if(!r) continue;
-            const old = JSON.parse(r);
-            const cfg = Array.isArray(old?.cases) ? old : {
-              cases: [{ title: old?.title || 'Image 1', image: old?.image || '', targets: deepCloneTargets(old?.targets||[]) }]
-            };
-            applyConfig(cfg);
-            try{ localStorage.setItem(LS_KEY, JSON.stringify(cfg)); }catch{}
-            toastMsg('Imported your previous image setup');
-            loaded = true; break;
-          }catch{ /* try next */ }
-        }
-      }
-
-      if(!loaded){
-        CASES = [{ title:'Image 1', image: imgUrl.value, targets: [] }];
-        setCaseIndex(0);
-      }
-
-      if(CASES[caseIndex]?.image) load(CASES[caseIndex].image);
-      renderTimer();
-      try{ if(!localStorage.getItem('mskhh_seen_help_v1')) openHelp(); }catch{}
-      if(truthy(params.get('teacher'))) setTimeout(()=> promptTeacherUnlock(), 50);
-    })();
-  </script>
-</body>
-</html>
