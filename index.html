@@ -191,10 +191,9 @@
     const LS_KEY = 'mskhh_multi_cfg_v1'; // supports migration from older single-image shape
     const LS_PIN = 'mskhh_teacher_pin_sha256_v1';
     const LS_HOTKEY = 'mskhh_teacher_hotkey_v1';
-    // Legacy storage keys from earlier single-image builds (migration support)
     const LEGACY_KEYS = ['mskhh_single_cfg_v2','mskhh_single_cfg_v1','mskhh_single_cfg'];
 
-    // ===== MCQ bank (add/edit freely) =====
+    // ===== MCQ bank =====
     const MCQ_BANK = [
       { q: 'Which technique best reduces tendon anisotropy?', options: ['Heel‑toe the probe', 'Increase depth', 'Lower PRF'], answer: 0 },
       { q: 'What orientation is shown?', options: ['Long‑axis', 'Short‑axis', 'Oblique'], answer: 1 },
@@ -255,7 +254,7 @@
     const helpDont = document.getElementById('helpDont');
 
     function openHelp(){ if(helpModal){ helpModal.hidden = false; document.body.classList.add('noScroll'); } }
-    function closeHelp(){ if(helpModal){ helpModal.hidden = true; document.body.classList.remove('noScroll'); if(helpDont?.checked){ try{ localStorage.setItem('mskhh_seen_help_v1','1'); }catch{} } } }
+    function closeHelp(){ if(helpModal){ helpModal.hidden = true; document.body.classList.remove('noScroll'); try{ if(helpDont?.checked) localStorage.setItem('mskhh_seen_help_v1','1'); }catch{} } }
     helpBtn?.addEventListener('click', openHelp);
     helpClose?.addEventListener('click', closeHelp);
     helpModal?.addEventListener('click', (e)=>{ if(e.target === helpModal) closeHelp(); });
@@ -350,8 +349,7 @@
       return stored;
     }
     async function promptTeacherUnlock(){
-      // In strict kiosk student mode, unlock is disabled unless ADMIN override
-      if (KIOSK && !ADMIN) return;
+      if (KIOSK && !ADMIN) return; // disabled in kiosk unless admin
       const stored = await ensureTeacherPin();
       if(!stored) return;
       const input = prompt('Enter teacher PIN');
@@ -369,7 +367,6 @@
     }
     function exitTeacherMode(){ document.body.classList.remove('teacher'); updateStartAvailability(); }
 
-    // Secret triggers: 5 clicks in top-left corner OR custom hotkey
     (function initSecretTriggers(){
       const triggersEnabled = !KIOSK || ADMIN;
       let clicks = 0, t = null;
@@ -392,7 +389,7 @@
     let caseIndex = 0; // which case is being viewed/edited
     let TARGETS = []; // alias to CASES[caseIndex].targets
 
-    function deepCloneTargets(arr){ return arr.map(t=>({name:t.name, x:+t.x, y:+t.y, w:+t.w, h:+t.h})); }
+    function deepCloneTargets(arr){ return (arr||[]).map(t=>({name:t.name, x:+t.x, y:+t.y, w:+t.w, h:+t.h})); }
 
     function renderCaseUI(){
       caseSel.innerHTML = CASES.map((c,i)=>`<option value="${i}">${i+1}: ${c.title||'Image '+(i+1)}</option>`).join('');
@@ -488,7 +485,7 @@
 
     // Copy snippet of last box
     document.addEventListener('keydown', (e)=>{
-      if(e.key.toLowerCase()==='c' && lastRect){
+      if((e.key||'').toLowerCase()==='c' && lastRect){
         const snippet = `{ id:\"new_target\", name:\"…\", x:${lastRect.x}, y:${lastRect.y}, w:${lastRect.w}, h:${lastRect.h} }`;
         navigator.clipboard?.writeText(snippet).then(()=> toastMsg('Copied target JSON'));
       }
@@ -518,6 +515,14 @@
       targetBoxEl.hidden = !showTargetsCb.checked;
     }
 
+    function clearTargetsForCase(i){
+      if(!CASES[i]) return;
+      CASES[i].targets = []; // replace array to avoid stale references
+      if(i===caseIndex){ TARGETS = CASES[i].targets; curIndex=-1; TARGET=null; }
+      dev.innerHTML = ''; lastRect = null;
+      renderCount(); drawTargetsLayer(); drawCurrentBox(); updateStartAvailability();
+    }
+
     useLastBtn.onclick = ()=>{
       if(!lastRect){ toastMsg('Draw a box first (toggle Edit mode)'); return; }
       const name = targetNameEl.value.trim() || `Target ${(TARGETS||[]).length+1}`;
@@ -527,7 +532,11 @@
       toastMsg('Target added');
     };
 
-    clearTargetsBtn.onclick = ()=>{ (TARGETS||[]).length = 0; curIndex=-1; TARGET=null; renderCount(); drawTargetsLayer(); drawCurrentBox(); updateStartAvailability(); toastMsg('Targets cleared for this image'); };
+    clearTargetsBtn.onclick = ()=>{
+      clearTargetsForCase(caseIndex);
+      toastMsg('Targets cleared for this image');
+      lastPrompt.innerHTML = 'Targets cleared. Toggle <strong>Edit mode</strong>, draw a new box, then press <strong>Add target</strong>.';
+    };
 
     showTargetsCb.onchange = ()=>{ drawTargetsLayer(); drawCurrentBox(); };
     window.addEventListener('resize', ()=>{ drawTargetsLayer(); drawCurrentBox(); });
@@ -574,7 +583,7 @@
         if(c >= CASES.length) return null;
         const arr = CASES[c].targets || [];
         if(i < arr.length) return {c,i};
-        c += 1; i = 0;
+        c += 1; i = 0; // advance case
       }
     }
 
@@ -608,7 +617,7 @@
       lastPrompt.innerHTML = `✅ Correct — <strong>${targetLabel}</strong> · MCQ: ${item.q}<div style='margin-top:8px; display:flex; flex-wrap:wrap; gap:8px'>${opts}</div>`;
       lastPrompt.querySelectorAll('button').forEach(b=>{
         b.addEventListener('click', (e)=>{
-          if(!mcqPending) return;
+          if(!mcqPending) return; // guard against double click
           const i = Number(e.currentTarget.getAttribute('data-i'));
           const ok = (i===item.answer);
           mcqPts = ok ? MCQ_POINTS : 0; score += mcqPts; renderScore(); toastMsg(ok?'MCQ ✓':'MCQ ✗');
@@ -700,8 +709,7 @@
         CASES = [
           { title:'A', image:'x', targets:[{name:'t1',x:10,y:10,w:10,h:10},{name:'t2',x:30,y:30,w:10,h:10}] },
           { title:'B', image:'y', targets:[{name:'u1',x:50,y:50,w:10,h:10}] }
-        ];
-        setCaseIndex(0);
+        ]; setCaseIndex(0);
         if((TARGETS||[]).length!==2) errs.push('Targets alias not bound to case 0');
         setCaseIndex(1);
         if((TARGETS||[]).length!==1) errs.push('Targets alias not bound to case 1');
@@ -724,19 +732,23 @@
         active=false; curIndex=-1; playCase=-1; tries=0; nextTarget();
         if(!active) errs.push('nextTarget should set active=true');
         if(tries!==3) errs.push('nextTarget should reset tries to 3');
+        // advance to next case boundary
         curIndex=0; playCase=0; nextTarget(); if(playCase!==1 || curIndex!==0) errs.push('nextTarget should advance to next case');
       }catch(e){ /* ignore */ }
 
+      // Clear targets must fully remove from UI/state
       try{
-        const hadClean = document.body.classList.contains('clean');
-        document.body.classList.add('clean');
-        const hiddenTargets = getComputedStyle(targetsLayer).display==='none';
-        const hiddenBox = getComputedStyle(targetBoxEl).display==='none';
-        if(!(hiddenTargets && hiddenBox)) errs.push('Clean should hide boxes');
-        if(!hadClean) document.body.classList.remove('clean');
+        CASES = [{ title:'Only', image:'x', targets:[{name:'A',x:10,y:10,w:10,h:10},{name:'B',x:20,y:20,w:10,h:10}] }];
+        setCaseIndex(0); showTargetsCb.checked = true; drawTargetsLayer();
+        if(targetsLayer.children.length!==2) errs.push('precondition: 2 boxes expected');
+        clearTargetsForCase(0);
+        if(CASES[0].targets.length!==0) errs.push('clearTargetsForCase did not empty array');
+        if(targetsLayer.children.length!==0) errs.push('targets layer not cleared after clear');
+        if(tcountEl.textContent!=='0') errs.push('tcount not updated after clear');
       }catch(e){ /* ignore */ }
 
       if(errs.length){ console.warn('Self-tests FAILED:', errs); toastMsg('Self-tests failed — see console'); }
+      // restore minimal state for app usage
       CASES = [{title:'Image 1', image: imgUrl.value, targets: []}]; setCaseIndex(0); TARGET=null; curIndex=-1; playCase=-1; drawTargetsLayer(); drawCurrentBox();
     })();
 
@@ -760,9 +772,8 @@
             applyConfig(cfg);
             try{ localStorage.setItem(LS_KEY, JSON.stringify(cfg)); }catch{}
             toastMsg('Imported your previous image setup');
-            loaded = true;
-            break;
-          }catch{ /* keep trying */ }
+            loaded = true; break;
+          }catch{ /* try next */ }
         }
       }
 
