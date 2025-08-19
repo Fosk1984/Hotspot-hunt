@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<!-- Single image · multiple targets · Timer + Scoring + MCQ gating · Save/Load/Export/Import -->
+<!-- Multi‑image hotspot game · Timer + Scoring + MCQ · Save/Load/Export/Import
+     Teacher mode (PIN) · Kiosk mode · Custom hotkey · Help modal -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MSK Hotspot — Single Image · Multi-target · MCQ</title>
+  <title>MSK Hotspot — Multi‑Image · Multi‑Target · MCQ</title>
   <style>
     :root{ --bg:#0b1020; --card:#12182b; --ink:#eaf0ff; --muted:#9aa4bf; --border:#2a3160; --ok:#33d17a; --bad:#ff6b6b; }
     *{box-sizing:border-box}
@@ -13,8 +14,8 @@
     h1{font-size:20px; margin:0 0 12px}
 
     .card{background:linear-gradient(180deg, rgba(23,32,58,.6), rgba(9,13,23,.6)); border:1px solid var(--border); border-radius:16px; overflow:hidden}
-    .bar{display:grid; gap:10px; align-items:center; padding:12px; border-bottom:1px solid var(--border); grid-template-columns: 1fr auto auto auto}
-    .bar input[type="text"]{width:100%; padding:8px 10px; background:#0e1426; border:1px solid var(--border); border-radius:8px; color:var(--ink)}
+    .bar{display:grid; gap:10px; align-items:center; padding:12px; border-bottom:1px solid var(--border)}
+    .bar input[type="text"], .bar select{width:100%; padding:8px 10px; background:#0e1426; border:1px solid var(--border); border-radius:8px; color:var(--ink)}
     .btn{border:1px solid var(--border); background:linear-gradient(180deg, rgba(124,140,255,.15), rgba(0,209,255,.15)); color:var(--ink); padding:8px 12px; border-radius:10px; cursor:pointer}
     .btn.secondary{background:linear-gradient(180deg, rgba(255,195,107,.12), rgba(124,140,255,.12))}
     .btn.small{padding:6px 10px; font-size:12px}
@@ -39,31 +40,81 @@
     .pill{border:1px solid var(--border); padding:6px 10px; border-radius:10px; background:linear-gradient(180deg, rgba(19,26,42,.6), rgba(11,16,32,.6))}
 
     .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:20px; background:rgba(0,0,0,.6); border:1px solid var(--border); padding:8px 12px; border-radius:10px; color:var(--ink)}
+
+    /* Clean student view */
+    .clean .cfg { display:none !important; }
+    .clean .mini.tip { display:none !important; }
+    /* Teacher can see config even while in Clean */
+    .teacher.clean .cfg { display:initial !important; }
+
+    /* Teacher toolbar */
+    #teacherBar{position:fixed; right:12px; top:12px; display:none; gap:8px; align-items:center; z-index:60}
+    .teacher #teacherBar{display:flex}
+    #teacherBar .btn.small{padding:4px 8px}
+
+    /* Invisible corner hotspot to summon teacher login */
+    #secretHot{position:fixed; left:0; top:0; width:28px; height:28px; opacity:0; z-index:70}
+
+    /* Kiosk mode — force clean, hide unlock UI */
+    .kiosk #cleanBtn { display:none !important; }
+    .kiosk #teacherBar { display:none !important; }
+    .kiosk #secretHot { display:none !important; }
+
+    /* Hide guides and boxes in Clean view */
+    .clean #targets, .clean #targetBox, .clean #dev { display:none !important; }
+
+    /* Help modal & floating button */
+    .noScroll{ overflow:hidden; }
+    #helpBtn{ position:fixed; right:20px; bottom:20px; z-index:75; }
+    .modal{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.6); z-index:80; }
+    .modal .sheet{ width:min(720px, 92vw); border:1px solid var(--border); border-radius:16px; padding:18px 20px; background:linear-gradient(180deg, rgba(23,32,58,.96), rgba(9,13,23,.96)); box-shadow:0 10px 40px rgba(0,0,0,.45); }
+    .modal h2{ margin:0 0 6px; font-size:18px }
+    .modal h3{ margin:14px 0 6px; font-size:15px; color:var(--ink) }
+    .modal p, .modal li{ color:var(--ink); opacity:.95 }
+    .row{ display:flex; gap:10px; align-items:center; justify-content:space-between; margin-top:12px }
+    .teachOnly{ display:none; }
+    .teacher .teachOnly{ display:block; }
+
+    /* Ensure elements with the HTML "hidden" attribute actually hide */
+    [hidden]{ display:none !important; }
   </style>
 </head>
-<body>
+<body class="clean">
   <div class="wrap">
-    <h1>MSK Hotspot — Single Image · Multi-target · MCQ</h1>
+    <h1>MSK Hotspot — Multi‑Image · Multi‑Target · MCQ</h1>
+
+    <!-- CASE CONTROLS -->
     <section class="card">
-      <div class="bar">
-        <input id="imgUrl" placeholder="Image URL" value="https://fosk1984.github.io/Hotspot-hunt/assets/compartment2.png" />
-        <button class="btn" id="loadBtn">Load image</button>
-        <button class="btn secondary" id="openBtn">Open URL</button>
-        <button class="btn secondary" id="copyBtn">Copy URL</button>
+      <div class="bar" style="grid-template-columns:auto 1fr 1fr auto auto auto auto;">
+        <button class="btn small cfg" id="prevCase" title="Previous image">◀</button>
+        <select class="cfg" id="caseSel" title="Select image"></select>
+        <input class="cfg" id="caseTitle" placeholder="Case title (e.g., Wrist — Extensor compartment)" />
+        <button class="btn small cfg" id="addCase" title="Add new image">+ Add</button>
+        <button class="btn small cfg" id="dupCase" title="Duplicate this image & targets">Duplicate</button>
+        <button class="btn small cfg" id="delCase" title="Delete this image">Delete</button>
+        <button class="btn small cfg" id="nextCase" title="Next image">▶</button>
       </div>
 
-      <div class="bar" style="grid-template-columns:1fr auto auto auto auto auto auto auto auto; border-top:1px solid var(--border)">
-        <input id="targetName" type="text" placeholder="Target name (e.g., ECRB tendon)" />
-        <button class="btn small" id="useLast">Add target (use last box)</button>
-        <button class="btn small" id="clearTargets">Clear targets</button>
-        <label class="mini"><input type="checkbox" id="showTargets" /> Show targets</label>
-        <label class="mini"><input type="checkbox" id="editMode" /> Edit mode</label>
+      <div class="bar" style="grid-template-columns: 1fr auto auto auto auto;">
+        <input class="cfg" id="imgUrl" placeholder="Image URL" value="https://fosk1984.github.io/Hotspot-hunt/assets/compartment2.png" />
+        <button class="btn cfg" id="loadBtn">Load image</button>
+        <button class="btn secondary cfg" id="openBtn">Open URL</button>
+        <button class="btn secondary cfg" id="copyBtn">Copy URL</button>
+        <button class="btn" id="cleanBtn" title="Toggle clean student view">Clean view</button>
+      </div>
+
+      <div class="bar" style="grid-template-columns:1fr auto auto auto auto auto auto auto auto;">
+        <input class="cfg" id="targetName" type="text" placeholder="Target name (e.g., ECRB tendon)" />
+        <button class="btn small cfg" id="useLast">Add target (use last box)</button>
+        <button class="btn small cfg" id="clearTargets">Clear targets</button>
+        <label class="mini cfg"><input type="checkbox" id="showTargets" /> Show targets</label>
+        <label class="mini cfg"><input type="checkbox" id="editMode" /> Edit mode</label>
         <button class="btn" id="startBtn">Start</button>
         <button class="btn secondary" id="resetBtn">Reset</button>
-        <button class="btn secondary" id="saveBtn" title="Save to this browser">Save</button>
-        <button class="btn secondary" id="loadBtnCfg" title="Load from this browser">Load</button>
-        <button class="btn secondary" id="exportBtn" title="Copy JSON">Export</button>
-        <button class="btn secondary" id="importBtn" title="Paste JSON">Import</button>
+        <button class="btn secondary cfg" id="saveBtn" title="Save to this browser">Save</button>
+        <button class="btn secondary cfg" id="loadBtnCfg" title="Load from this browser">Load</button>
+        <button class="btn secondary cfg" id="exportBtn" title="Copy JSON">Export</button>
+        <button class="btn secondary cfg" id="importBtn" title="Paste JSON">Import</button>
       </div>
 
       <div class="board">
@@ -77,31 +128,80 @@
       </div>
 
       <div class="foot">
-        <div class="mini" id="prompt">Toggle <strong>Edit mode</strong>, draw boxes, click <strong>Add target</strong>, name them, then press <strong>Start</strong>. Sequence plays in order.</div>
+        <div class="mini" id="prompt">Use <strong>Edit mode</strong> to draw boxes and <strong>Add target</strong> to name each hotspot. Add multiple images above, then press <strong>Start</strong> to play through them in order.</div>
         <div class="hud">
+          <div class="pill">Case: <span id="caseBadge">1 / 1</span></div>
           <div class="pill">Timer: <span id="timer">2:00</span></div>
           <div class="pill">Attempts: <span id="tries">—</span></div>
           <div class="pill">Score: <span id="score">0</span></div>
-          <div class="pill">Targets: <span id="tcount">0</span></div>
+          <div class="pill">Targets (this image): <span id="tcount">0</span></div>
           <div class="pill">Status: <span id="status">idle</span></div>
         </div>
       </div>
     </section>
-    <p class="mini" style="margin-top:10px">If the image does not appear, click <strong>Open URL</strong> to see if it 404s. GitHub Pages is <em>case‑sensitive</em> (e.g. <code>.PNG</code> ≠ <code>.png</code>).</p>
+    <p class="mini tip" style="margin-top:10px">If an image does not appear, click <strong>Open URL</strong> to see if it 404s. GitHub Pages is <em>case‑sensitive</em> (e.g. <code>.PNG</code> ≠ <code>.png</code>).</p>
   </div>
 
+  <!-- Teacher toolbar (visible only in teacher mode) -->
+  <div id="teacherBar">
+    <span class="pill">👩‍🏫 Teacher</span>
+    <span class="pill" id="hotkeyPill">Hotkey: Ctrl+Alt+T</span>
+    <button class="btn small" id="tbSetHotkey" title="Press a new combo">Set Hotkey</button>
+    <button class="btn small" id="tbToggleClean">Toggle Clean</button>
+    <button class="btn small" id="tbExitTeacher">Exit</button>
+  </div>
+
+  <!-- Invisible corner hotspot to summon teacher login (5 clicks) -->
+  <div id="secretHot" aria-hidden="true"></div>
+
   <div class="toast" id="toast" hidden></div>
+
+  <!-- Help: How to play -->
+  <button class="btn" id="helpBtn" aria-haspopup="dialog" aria-controls="helpModal">How to play</button>
+  <div id="helpModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
+    <div class="sheet">
+      <h2 id="helpTitle">How to play</h2>
+      <p><strong>Goal:</strong> For each image, click the correct hotspot for the named structure before time expires. You get <strong>3 attempts</strong> per target. A quick MCQ follows each correct hit for bonus points.</p>
+      <h3>Students</h3>
+      <ol>
+        <li>Press <strong>Start</strong>. The prompt shows which structure to find (e.g., “Find (1/N): ECRB tendon”).</li>
+        <li>Click where you think that structure is. First‑try hits score highest.</li>
+        <li>On a hit, answer the short <strong>MCQ</strong> for bonus points; the game then advances to the next target (and next image when finished).</li>
+        <li>Complete all images before time expires to maximize your <strong>final score</strong> (hits + MCQ + time bonus).</li>
+      </ol>
+      <details class="teachOnly"><summary><strong>Teachers — setup</strong> (hidden from students)</summary>
+        <ol class="teachOnly">
+          <li>Unlock teacher tools (hotkey or 5× corner) → enter PIN.</li>
+          <li>Add images in the top bar, set each <strong>Image URL</strong>, then toggle <strong>Edit mode</strong> to draw and name targets.</li>
+          <li>Use <strong>Save</strong>/<strong>Export</strong> to keep your configuration; <strong>Load</strong>/<strong>Import</strong> to reuse.</li>
+          <li>Use <strong>Clean view</strong> (or <code>?kiosk=1</code>) for students.</li>
+        </ol>
+      </details>
+      <div class="row">
+        <label class="mini"><input type="checkbox" id="helpDont" /> Don’t show again on this device</label>
+        <button class="btn" id="helpClose">Close</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     // ===== Config =====
     const TIME_LIMIT = 120; // seconds (2:00)
     const MCQ_POINTS = 40;  // +40 for correct MCQ
-    const LS_KEY = 'mskhh_single_cfg_v2';
+    const LS_KEY = 'mskhh_multi_cfg_v1'; // supports migration from older single-image shape
+    const LS_PIN = 'mskhh_teacher_pin_sha256_v1';
+    const LS_HOTKEY = 'mskhh_teacher_hotkey_v1';
+    // Legacy storage keys from earlier single-image builds (migration support)
+    const LEGACY_KEYS = ['mskhh_single_cfg_v2','mskhh_single_cfg_v1','mskhh_single_cfg'];
 
-    // Simple MCQ bank (pick one at random)
+    // ===== MCQ bank (add/edit freely) =====
     const MCQ_BANK = [
-      { q: 'Which technique best reduces tendon anisotropy?', options: ['Heel-toe the probe', 'Increase depth', 'Lower PRF'], answer: 0 },
-      { q: 'What orientation is shown?', options: ['Long-axis', 'Short-axis', 'Axial'], answer: 1 }
+      { q: 'Which technique best reduces tendon anisotropy?', options: ['Heel‑toe the probe', 'Increase depth', 'Lower PRF'], answer: 0 },
+      { q: 'What orientation is shown?', options: ['Long‑axis', 'Short‑axis', 'Oblique'], answer: 1 },
+      { q: 'Optimal gel usage for MSK US?', options: ['Generous gel, no pressure', 'Minimal gel, high pressure', 'Dry scanning'], answer: 0 },
+      { q: 'To improve Doppler sensitivity for slow flow you would…', options: ['Lower PRF', 'Increase wall filter', 'Use higher frequency with same PRF'], answer: 0 },
+      { q: 'Anisotropy is MOST problematic in…', options: ['Tendon', 'Muscle', 'Nerve'], answer: 0 },
+      { q: 'Median nerve appearance in short‑axis?', options: ['Honeycomb', 'Feathered', 'Striated hyperechoic bands'], answer: 0 }
     ];
 
     // ===== Elements =====
@@ -116,6 +216,7 @@
     const statusEl = document.getElementById('status');
     const timerEl = document.getElementById('timer');
     const scoreEl = document.getElementById('score');
+    const caseBadge = document.getElementById('caseBadge');
 
     const targetNameEl = document.getElementById('targetName');
     const useLastBtn = document.getElementById('useLast');
@@ -129,8 +230,218 @@
     const exportBtn = document.getElementById('exportBtn');
     const importBtn = document.getElementById('importBtn');
 
+    // Case controls
+    const caseSel = document.getElementById('caseSel');
+    const caseTitleInput = document.getElementById('caseTitle');
+    const addCaseBtn = document.getElementById('addCase');
+    const dupCaseBtn = document.getElementById('dupCase');
+    const delCaseBtn = document.getElementById('delCase');
+    const prevCaseBtn = document.getElementById('prevCase');
+    const nextCaseBtn = document.getElementById('nextCase');
+
     const dev = document.getElementById('dev');
     const toast = document.getElementById('toast');
+    const cleanBtn = document.getElementById('cleanBtn');
+
+    const teacherBar = document.getElementById('teacherBar');
+    const tbToggleClean = document.getElementById('tbToggleClean');
+    const tbExitTeacher = document.getElementById('tbExitTeacher');
+    const tbSetHotkey = document.getElementById('tbSetHotkey');
+    const hotkeyPill = document.getElementById('hotkeyPill');
+    const secretHot = document.getElementById('secretHot');
+    const helpBtn = document.getElementById('helpBtn');
+    const helpModal = document.getElementById('helpModal');
+    const helpClose = document.getElementById('helpClose');
+    const helpDont = document.getElementById('helpDont');
+
+    function openHelp(){ if(helpModal){ helpModal.hidden = false; document.body.classList.add('noScroll'); } }
+    function closeHelp(){ if(helpModal){ helpModal.hidden = true; document.body.classList.remove('noScroll'); if(helpDont?.checked){ try{ localStorage.setItem('mskhh_seen_help_v1','1'); }catch{} } } }
+    helpBtn?.addEventListener('click', openHelp);
+    helpClose?.addEventListener('click', closeHelp);
+    helpModal?.addEventListener('click', (e)=>{ if(e.target === helpModal) closeHelp(); });
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && !helpModal?.hidden) closeHelp(); });
+
+    // ===== Query params / Kiosk / Hotkey =====
+    const params = new URLSearchParams(location.search);
+    const truthy = (v)=>['1','true','yes','y','on'].includes(String(v||'').toLowerCase());
+    const KIOSK = truthy(params.get('kiosk'));
+    const ADMIN = truthy(params.get('admin')) || truthy(params.get('unlock')) || false; // admin override for kiosk
+    if (KIOSK) { document.body.classList.add('kiosk','clean'); }
+
+    // Clean view toggle
+    if (cleanBtn) {
+      const setCleanLabel = ()=> cleanBtn.textContent = document.body.classList.contains('clean') ? 'Normal view' : 'Clean view';
+      cleanBtn.onclick = ()=>{ document.body.classList.toggle('clean'); setCleanLabel(); };
+      setCleanLabel();
+    }
+    tbToggleClean.onclick = ()=>{ document.body.classList.toggle('clean'); };
+    tbExitTeacher.onclick = ()=> exitTeacherMode();
+
+    // Hotkey parsing / storage
+    const DEFAULT_HOTKEY = {ctrl:true, alt:true, shift:false, meta:false, key:'t'};
+    function parseHotkeySpec(spec){
+      if(!spec) return null;
+      const hk = {ctrl:false, alt:false, shift:false, meta:false, key:''};
+      String(spec).split('+').map(s=>s.trim().toLowerCase()).forEach(p=>{
+        if(p==='ctrl' || p==='control') hk.ctrl = true;
+        else if(p==='alt' || p==='option') hk.alt = true;
+        else if(p==='shift') hk.shift = true;
+        else if(p==='meta' || p==='cmd' || p==='command' || p==='super') hk.meta = true;
+        else if(p) hk.key = p;
+      });
+      if(!hk.key || ['control','shift','alt','meta','cmd','option'].includes(hk.key)) return null;
+      return hk;
+    }
+    function hotkeyToString(hk){
+      const parts = [];
+      const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+      if(hk.meta) parts.push(isMac?'Cmd':'Meta');
+      if(hk.ctrl) parts.push('Ctrl');
+      if(hk.alt) parts.push(isMac?'Option':'Alt');
+      if(hk.shift) parts.push('Shift');
+      parts.push((hk.key||'').toUpperCase());
+      return parts.join('+');
+    }
+    function matchesHotkey(e, hk){
+      const key = (e.key||'').toLowerCase();
+      return !!hk && e.ctrlKey===!!hk.ctrl && e.altKey===!!hk.alt && e.shiftKey===!!hk.shift && e.metaKey===!!hk.meta && key===hk.key;
+    }
+
+    let currentHotkey = DEFAULT_HOTKEY;
+    (function loadHotkey(){
+      try{ const saved = localStorage.getItem(LS_HOTKEY); if(saved){ const obj = JSON.parse(saved); if(obj && obj.key) currentHotkey = obj; } }catch{}
+      const qh = params.get('hotkey'); const parsed = parseHotkeySpec(qh); if(parsed) currentHotkey = parsed;
+      if(hotkeyPill) hotkeyPill.textContent = 'Hotkey: '+hotkeyToString(currentHotkey);
+    })();
+
+    if(tbSetHotkey){
+      tbSetHotkey.onclick = ()=>{
+        toastMsg('Press new hotkey…');
+        const once = (e)=>{
+          e.preventDefault(); e.stopPropagation();
+          const hk = {ctrl:e.ctrlKey, alt:e.altKey, shift:e.shiftKey, meta:e.metaKey, key:(e.key||'').toLowerCase()};
+          if(!hk.key || ['control','shift','alt','meta'].includes(hk.key)){ toastMsg('Pick a non‑modifier key'); return; }
+          currentHotkey = hk; try{ localStorage.setItem(LS_HOTKEY, JSON.stringify(hk)); }catch{}
+          if(hotkeyPill) hotkeyPill.textContent = 'Hotkey: '+hotkeyToString(currentHotkey);
+          toastMsg('Hotkey set');
+          document.removeEventListener('keydown', once, true);
+        };
+        document.addEventListener('keydown', once, true);
+      };
+    }
+
+    // ===== Teacher mode (PIN-gated) =====
+    async function sha256Hex(text){
+      const enc = new TextEncoder();
+      const buf = await crypto.subtle.digest('SHA-256', enc.encode(text));
+      return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    }
+    async function ensureTeacherPin(){
+      let stored = localStorage.getItem(LS_PIN);
+      if(!stored){
+        const p1 = prompt('Set a teacher PIN (numbers/letters)');
+        if(!p1) return null;
+        const p2 = prompt('Confirm teacher PIN');
+        if(p1!==p2){ alert('PINs do not match.'); return null; }
+        stored = await sha256Hex('mskhh:'+p1);
+        localStorage.setItem(LS_PIN, stored);
+        toastMsg('Teacher PIN set');
+      }
+      return stored;
+    }
+    async function promptTeacherUnlock(){
+      // In strict kiosk student mode, unlock is disabled unless ADMIN override
+      if (KIOSK && !ADMIN) return;
+      const stored = await ensureTeacherPin();
+      if(!stored) return;
+      const input = prompt('Enter teacher PIN');
+      if(input==null) return;
+      const h = await sha256Hex('mskhh:'+input);
+      if(h===stored){ enterTeacherMode(); toastMsg('Teacher mode on'); }
+      else { toastMsg('Incorrect PIN'); }
+    }
+    function enterTeacherMode(){
+      document.body.classList.add('teacher');
+      if (document.body.classList.contains('kiosk') && ADMIN) {
+        document.body.classList.remove('kiosk');
+      }
+      updateStartAvailability();
+    }
+    function exitTeacherMode(){ document.body.classList.remove('teacher'); updateStartAvailability(); }
+
+    // Secret triggers: 5 clicks in top-left corner OR custom hotkey
+    (function initSecretTriggers(){
+      const triggersEnabled = !KIOSK || ADMIN;
+      let clicks = 0, t = null;
+      if(triggersEnabled){
+        secretHot.addEventListener('click', ()=>{
+          if(document.body.classList.contains('teacher')) return;
+          clicks += 1; clearTimeout(t); t = setTimeout(()=>{clicks=0;}, 1200);
+          if(clicks>=5){ clicks=0; promptTeacherUnlock(); }
+        });
+        document.addEventListener('keydown', (e)=>{
+          if(matchesHotkey(e, currentHotkey)){
+            if(document.body.classList.contains('teacher')) exitTeacherMode(); else promptTeacherUnlock();
+          }
+        });
+      }
+    })();
+
+    // ===== Data model: cases (images) =====
+    let CASES = [];
+    let caseIndex = 0; // which case is being viewed/edited
+    let TARGETS = []; // alias to CASES[caseIndex].targets
+
+    function deepCloneTargets(arr){ return arr.map(t=>({name:t.name, x:+t.x, y:+t.y, w:+t.w, h:+t.h})); }
+
+    function renderCaseUI(){
+      caseSel.innerHTML = CASES.map((c,i)=>`<option value="${i}">${i+1}: ${c.title||'Image '+(i+1)}</option>`).join('');
+      caseSel.value = String(caseIndex);
+      caseTitleInput.value = CASES[caseIndex]?.title || '';
+      caseBadge.textContent = `${caseIndex+1} / ${CASES.length}`;
+      const imgU = CASES[caseIndex]?.image || '';
+      if(imgUrl.value !== imgU) imgUrl.value = imgU;
+      renderCount(); drawTargetsLayer(); drawCurrentBox();
+    }
+
+    function setCaseIndex(i){
+      const n = Math.max(0, Math.min(i, CASES.length-1));
+      caseIndex = n;
+      TARGETS = CASES[caseIndex].targets;
+      renderCaseUI();
+      if(CASES[caseIndex].image){ load(CASES[caseIndex].image); }
+      updateStartAvailability();
+    }
+
+    function addCase(copyCurrent=false){
+      const baseTitle = `Image ${CASES.length+1}`;
+      const newCase = copyCurrent && CASES[caseIndex] ? {
+        title: (CASES[caseIndex].title? CASES[caseIndex].title+' (copy)' : baseTitle+' (copy)'),
+        image: CASES[caseIndex].image || '',
+        targets: deepCloneTargets(CASES[caseIndex].targets||[])
+      } : { title: baseTitle, image: '', targets: [] };
+      CASES.splice(caseIndex+1, 0, newCase);
+      setCaseIndex(caseIndex+1);
+      toastMsg(copyCurrent? 'Duplicated image' : 'Added image');
+    }
+
+    function deleteCase(){
+      if(CASES.length<=1){ // keep at least one case
+        CASES[0] = { title: 'Image 1', image: '', targets: [] };
+        setCaseIndex(0); toastMsg('Cleared the only image'); return;
+      }
+      CASES.splice(caseIndex,1);
+      setCaseIndex(Math.max(0, caseIndex-1));
+      toastMsg('Deleted image');
+    }
+
+    function totalTargets(){ return CASES.reduce((s,c)=> s + (c.targets?.length||0), 0); }
+
+    // ===== Start availability gating =====
+    function updateStartAvailability(){
+      const canStart = (totalTargets() > 0) && !mcqPending && !active;
+      startBtn.disabled = !canStart;
+    }
 
     // ===== Helpers =====
     function toastMsg(msg){ toast.textContent = msg; toast.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(()=>toast.hidden=true, 1800); }
@@ -149,8 +460,7 @@
       img.onerror = ()=> toastMsg('Image failed to load');
       img.src = u + (u.includes('?')?'&':'?') + 'cb=' + Date.now();
     }
-
-    document.getElementById('loadBtn').onclick = ()=> load(imgUrl.value);
+    document.getElementById('loadBtn').onclick = ()=>{ const u = imgUrl.value; if(CASES[caseIndex]) CASES[caseIndex].image = u; load(u); };
     document.getElementById('openBtn').onclick = ()=> { const u = imgUrl.value.trim(); if(u) window.open(u, '_blank'); };
     document.getElementById('copyBtn').onclick = ()=> { const u = imgUrl.value.trim(); navigator.clipboard?.writeText(u).then(()=> toastMsg('URL copied')); };
 
@@ -184,26 +494,25 @@
       }
     });
 
-    // ===== Target list =====
-    let TARGETS = []; // array of {name,x,y,w,h}
-    let TARGET = null; // current
-    let curIndex = -1;
+    // ===== Target list (per current case) =====
+    let TARGET = null; // current play target
+    let curIndex = -1;  // play target index within a case
 
-    function renderCount(){ tcountEl.textContent = String(TARGETS.length); }
+    function renderCount(){ tcountEl.textContent = String((TARGETS||[]).length); updateStartAvailability(); }
 
     function drawTargetsLayer(){
       targetsLayer.innerHTML='';
       if(!showTargetsCb.checked) return;
-      TARGETS.forEach((t, i)=>{
+      (TARGETS||[]).forEach((t, i)=>{
         const r = pxFromPctRect(t);
         const d = document.createElement('div'); d.className='box'; Object.assign(d.style, {left:r.x+'px', top:r.y+'px', width:r.w+'px', height:r.h+'px'});
-        if(i===curIndex) d.style.borderColor = 'rgba(255,255,255,.9)';
+        if(i===curIndex && active) d.style.borderColor = 'rgba(255,255,255,.9)';
         targetsLayer.appendChild(d);
       });
     }
 
     function drawCurrentBox(){
-      if(!TARGET){ targetBoxEl.hidden = true; return; }
+      if(!active || !TARGET){ targetBoxEl.hidden = true; return; }
       const r = pxFromPctRect(TARGET);
       Object.assign(targetBoxEl.style, {left:r.x+'px', top:r.y+'px', width:r.w+'px', height:r.h+'px'});
       targetBoxEl.hidden = !showTargetsCb.checked;
@@ -211,21 +520,22 @@
 
     useLastBtn.onclick = ()=>{
       if(!lastRect){ toastMsg('Draw a box first (toggle Edit mode)'); return; }
-      const name = targetNameEl.value.trim() || `Target ${TARGETS.length+1}`;
+      const name = targetNameEl.value.trim() || `Target ${(TARGETS||[]).length+1}`;
       TARGETS.push({ name, ...lastRect });
-      renderCount(); drawTargetsLayer(); drawCurrentBox();
+      renderCount(); drawTargetsLayer(); drawCurrentBox(); updateStartAvailability();
       lastPrompt.innerHTML = `Added: <strong>${name}</strong>. Add more or press <strong>Start</strong> to play.`;
       toastMsg('Target added');
     };
 
-    clearTargetsBtn.onclick = ()=>{ TARGETS = []; curIndex=-1; TARGET=null; renderCount(); drawTargetsLayer(); drawCurrentBox(); toastMsg('Targets cleared'); };
+    clearTargetsBtn.onclick = ()=>{ (TARGETS||[]).length = 0; curIndex=-1; TARGET=null; renderCount(); drawTargetsLayer(); drawCurrentBox(); updateStartAvailability(); toastMsg('Targets cleared for this image'); };
 
     showTargetsCb.onchange = ()=>{ drawTargetsLayer(); drawCurrentBox(); };
     window.addEventListener('resize', ()=>{ drawTargetsLayer(); drawCurrentBox(); });
 
-    // ===== Gameplay (Timer + Scoring + MCQ gating) =====
+    // ===== Gameplay (Timer + Scoring + MCQ gating across images) =====
     let active = false, tries = 0, timeLeft = TIME_LIMIT, timerId = null, score = 0, mcqPending = false;
     let basePts = 0, mcqPts = 0;
+    let playCase = -1; // which case is being played now (can differ from editor caseIndex)
 
     function setStatus(s){ statusEl.textContent = s; }
     function renderTries(){ triesEl.textContent = active ? String(tries) : '—'; }
@@ -238,52 +548,92 @@
     }
 
     function endAll(reason){
-      clearInterval(timerId); timerId = null; active = false; mcqPending = false; startBtn.disabled = false; startBtn.textContent = 'Restart';
+      clearInterval(timerId); timerId = null; active = false; mcqPending = false; startBtn.textContent = 'Restart';
       renderTries();
       const timeBonus = Math.max(0, timeLeft);
       const final = score + timeBonus;
-      const done = (curIndex>=0? curIndex+1 : 0);
-      lastPrompt.innerHTML = `<strong>${reason}</strong><br>Completed: ${done}/${TARGETS.length}. Score: ${score} (last hit ${basePts}${mcqPts?` + MCQ ${mcqPts}`:''}) + time bonus ${timeBonus} = <strong>${final}</strong>`;
+      const done = countCompleted();
+      const mcqStr = mcqPts ? ` + MCQ ${mcqPts}` : '';
+      lastPrompt.innerHTML = `<strong>${reason}</strong><br>Completed: ${done}/${totalTargets()}. Score: ${score} (last hit ${basePts}${mcqStr}) + time bonus ${timeBonus} = <strong>${final}</strong>`;
       setStatus('done');
+      updateStartAvailability();
+    }
+
+    function countCompleted(){
+      if(playCase < 0) return 0;
+      let sum = 0;
+      for(let i=0;i<playCase;i++) sum += (CASES[i].targets?.length||0);
+      return sum + Math.max(0, curIndex+1);
+    }
+
+    function findNextPlayable(fromCase, fromIndex){
+      let c = fromCase;
+      let i = fromIndex + 1;
+      for(;;){
+        if(c < 0){ c = 0; i = 0; }
+        if(c >= CASES.length) return null;
+        const arr = CASES[c].targets || [];
+        if(i < arr.length) return {c,i};
+        c += 1; i = 0;
+      }
+    }
+
+    function switchToPlayCase(c){
+      playCase = c;
+      if(caseIndex !== c){ setCaseIndex(c); } else {
+        if(CASES[c].image) load(CASES[c].image);
+        renderCaseUI();
+      }
     }
 
     function nextTarget(){
-      curIndex += 1;
-      if(curIndex >= TARGETS.length){ endAll('🏁 All targets complete'); return; }
-      TARGET = TARGETS[curIndex]; tries = 3; basePts = 0; mcqPts = 0; renderTries();
-      lastPrompt.innerHTML = `Find (${curIndex+1}/${TARGETS.length}): <strong>${TARGET.name}</strong>`;
+      const nxt = findNextPlayable(playCase, curIndex);
+      if(!nxt){ endAll('🏁 All images complete'); return; }
+      if(nxt.c !== playCase){ switchToPlayCase(nxt.c); }
+      curIndex = nxt.i;
+      TARGET = CASES[playCase].targets[curIndex];
+      active = true; tries = 3; basePts = 0; mcqPts = 0; renderTries();
+      const totalInCase = (CASES[playCase].targets||[]).length;
+      lastPrompt.innerHTML = `Find (${curIndex+1}/${totalInCase}) on <strong>${CASES[playCase].title||('Image '+(playCase+1))}</strong>: <strong>${TARGET.name}</strong>`;
       setStatus('playing');
       drawCurrentBox(); drawTargetsLayer();
+      renderCaseUI();
     }
 
     function askMCQ(){
       const item = MCQ_BANK[Math.floor(Math.random()*MCQ_BANK.length)];
       mcqPending = true; startBtn.disabled = true; setStatus('awaiting MCQ');
+      const targetLabel = TARGET?.name || 'this structure';
       const opts = item.options.map((o,i)=>`<button class='btn small' data-i='${i}'>${o}</button>`).join(' ');
-      lastPrompt.innerHTML = `✅ Correct — <strong>${TARGET.name}</strong> · MCQ: ${item.q}<div style='margin-top:8px; display:flex; flex-wrap:wrap; gap:8px'>${opts}</div>`;
+      lastPrompt.innerHTML = `✅ Correct — <strong>${targetLabel}</strong> · MCQ: ${item.q}<div style='margin-top:8px; display:flex; flex-wrap:wrap; gap:8px'>${opts}</div>`;
       lastPrompt.querySelectorAll('button').forEach(b=>{
         b.addEventListener('click', (e)=>{
-          if(!mcqPending) return; // guard
+          if(!mcqPending) return;
           const i = Number(e.currentTarget.getAttribute('data-i'));
           const ok = (i===item.answer);
           mcqPts = ok ? MCQ_POINTS : 0; score += mcqPts; renderScore(); toastMsg(ok?'MCQ ✓':'MCQ ✗');
-          mcqPending = false; startBtn.disabled = false; // allow restart if time remains
+          mcqPending = false; startBtn.disabled = false;
+          updateStartAvailability();
           nextTarget();
         }, {once:true});
       });
     }
 
     startBtn.onclick = ()=>{
-      if(mcqPending) return; // gate
-      if(!TARGETS.length){ toastMsg('Add at least one target'); return; }
-      active = true; curIndex = -1; score = 0; renderScore(); showTargetsCb.checked = false; // hide during play
-      startBtn.disabled = true; startBtn.textContent = 'Running…';
-      startTimer();
-      nextTarget();
+      try{
+        if(totalTargets()===0){ lastPrompt.innerHTML = 'Add at least one target (Edit mode → draw → Add target)'; toastMsg('Add at least one target'); updateStartAvailability(); return; }
+        if(mcqPending){ toastMsg('Answer the MCQ first'); return; }
+        if(editModeCb.checked){ editModeCb.checked = false; dev.innerHTML=''; }
+        document.body.classList.add('clean'); if (cleanBtn) cleanBtn.textContent = 'Normal view';
+        active = true; curIndex = -1; playCase = -1; score = 0; renderScore(); showTargetsCb.checked = false;
+        startBtn.disabled = true; startBtn.textContent = 'Running…';
+        startTimer();
+        nextTarget();
+      }catch(e){ console.error('Start failed', e); toastMsg('Start failed: '+(e?.message||e)); lastPrompt.innerHTML = `<strong>Start failed:</strong> ${(e?.message||e)}`; }
     };
 
     resetBtn.onclick = ()=>{
-      active = false; tries = 0; mcqPending = false; clearInterval(timerId); timerId = null; timeLeft = TIME_LIMIT; renderTimer(); renderTries(); setStatus('idle'); lastPrompt.innerHTML = 'Toggle Edit, add targets, then Start.'; overlay.querySelectorAll('.marker').forEach(n=>n.remove()); startBtn.disabled = false; startBtn.textContent = 'Start'; drawTargetsLayer(); drawCurrentBox();
+      active = false; tries = 0; mcqPending = false; clearInterval(timerId); timerId = null; timeLeft = TIME_LIMIT; renderTimer(); renderTries(); setStatus('idle'); lastPrompt.innerHTML = 'Use Edit mode to add targets, then Start.'; overlay.querySelectorAll('.marker').forEach(n=>n.remove()); startBtn.textContent = 'Start'; TARGET=null; curIndex=-1; playCase=-1; drawTargetsLayer(); drawCurrentBox(); updateStartAvailability();
     };
 
     function isHit(px, py){
@@ -295,7 +645,6 @@
 
     function scoreForTry(t){ return t>=3?100 : t===2?60 : 30; }
 
-    // Click to guess (always available; only counts during active)
     overlay.addEventListener('click', (e)=>{
       const bb = overlay.getBoundingClientRect();
       const x = e.clientX - bb.left; const y = e.clientY - bb.top;
@@ -311,38 +660,122 @@
     });
 
     // ===== Save / Load / Export / Import =====
-    function configFromUI(){ return { image: imgUrl.value.trim(), targets: TARGETS.slice() }; }
-    function applyConfig(cfg){ if(cfg.image) { imgUrl.value = cfg.image; load(cfg.image); } if(Array.isArray(cfg.targets)) { TARGETS = cfg.targets.map(t=>({name:t.name||'Target', x:+t.x, y:+t.y, w:+t.w, h:+t.h})); renderCount(); drawTargetsLayer(); drawCurrentBox(); } }
+    function configFromUI(){
+      const first = CASES[0] || {image:'',targets:[]};
+      return { cases: CASES, image: first.image, targets: first.targets };
+    }
+    function applyConfig(cfg){
+      if(Array.isArray(cfg.cases)){
+        CASES = cfg.cases.map((c,i)=>({ title: c.title||`Image ${i+1}`, image: c.image||'', targets: deepCloneTargets(c.targets||[]) }));
+      } else {
+        CASES = [{ title: 'Image 1', image: cfg.image||'', targets: deepCloneTargets(cfg.targets||[]) }];
+      }
+      setCaseIndex(0);
+    }
 
     saveBtn.onclick = ()=>{ const cfg = configFromUI(); localStorage.setItem(LS_KEY, JSON.stringify(cfg)); toastMsg('Saved to browser'); };
     loadBtnCfg.onclick = ()=>{ const raw = localStorage.getItem(LS_KEY); if(!raw){ toastMsg('Nothing saved yet'); return; } try{ const cfg = JSON.parse(raw); applyConfig(cfg); toastMsg('Loaded from browser'); }catch{ toastMsg('Failed to parse saved data'); } };
     exportBtn.onclick = ()=>{ const cfg = configFromUI(); const json = JSON.stringify(cfg, null, 2); navigator.clipboard?.writeText(json).then(()=> toastMsg('Config JSON copied')); };
     importBtn.onclick = ()=>{ const json = prompt('Paste config JSON here'); if(!json) return; try{ const cfg = JSON.parse(json); applyConfig(cfg); toastMsg('Config imported'); } catch(e){ toastMsg('Invalid JSON'); } };
 
+    // ===== Case UI wiring =====
+    caseSel.addEventListener('change', ()=>{ setCaseIndex(parseInt(caseSel.value||'0',10)||0); });
+    caseTitleInput.addEventListener('input', ()=>{ if(CASES[caseIndex]){ CASES[caseIndex].title = caseTitleInput.value; renderCaseUI(); } });
+    addCaseBtn.addEventListener('click', ()=> addCase(false));
+    dupCaseBtn.addEventListener('click', ()=> addCase(true));
+    delCaseBtn.addEventListener('click', ()=> deleteCase());
+    prevCaseBtn.addEventListener('click', ()=> setCaseIndex(caseIndex-1));
+    nextCaseBtn.addEventListener('click', ()=> setCaseIndex(caseIndex+1));
+
     // ===== Self-tests (small & non-invasive) =====
     (function selfTests(){
       const errs = [];
-      // pct basic
+      try{
+        if(!Array.isArray(MCQ_BANK) || MCQ_BANK.length<1) errs.push('MCQ_BANK missing/empty');
+        const s = MCQ_BANK[0];
+        if(typeof s.q!=='string' || !Array.isArray(s.options) || typeof s.answer!=='number') errs.push('MCQ_BANK item shape invalid');
+      }catch(e){ errs.push('MCQ_BANK check threw'); }
+
+      try{
+        CASES = [
+          { title:'A', image:'x', targets:[{name:'t1',x:10,y:10,w:10,h:10},{name:'t2',x:30,y:30,w:10,h:10}] },
+          { title:'B', image:'y', targets:[{name:'u1',x:50,y:50,w:10,h:10}] }
+        ];
+        setCaseIndex(0);
+        if((TARGETS||[]).length!==2) errs.push('Targets alias not bound to case 0');
+        setCaseIndex(1);
+        if((TARGETS||[]).length!==1) errs.push('Targets alias not bound to case 1');
+      }catch(e){ errs.push('Case init failed'); }
+
       if(pct(50,100)!==50 || pct(25,50)!==50) errs.push('pct failed');
-      // fmt basic
       if(fmt(0)!=='0:00' || fmt(65)!=='1:05' || fmt(120)!=='2:00') errs.push('fmt failed');
-      // scoring
       if(scoreForTry(3)!==100 || scoreForTry(2)!==60 || scoreForTry(1)!==30) errs.push('scoreForTry failed');
-      // targets render sanity
-      TARGETS = [{name:'A',x:10,y:10,w:20,h:20},{name:'B',x:40,y:40,w:10,h:10}]; renderCount(); showTargetsCb.checked = true; drawTargetsLayer();
-      if(targetsLayer.children.length!==2) errs.push('targetsLayer should render 2 boxes');
-      // save/load roundtrip (in-memory)
-      const cfg = configFromUI(); applyConfig({image: cfg.image, targets: cfg.targets}); if(tcountEl.textContent==='0') errs.push('applyConfig did not set targets');
-      // MCQ gating quick check (does not require TARGET)
-      try{ const prev = startBtn.disabled; askMCQ(); if(!document.querySelector('#prompt button')) errs.push('MCQ not rendered'); startBtn.disabled = prev; }catch(e){ /* ignore in headless */ }
+
+      try{
+        CASES = [{title:'only', image:'', targets:[]}]; setCaseIndex(0); updateStartAvailability(); if(!startBtn.disabled) errs.push('Start should be disabled with 0 total targets');
+        CASES[0].targets=[{name:'a',x:0,y:0,w:10,h:10}]; TARGETS=CASES[0].targets; renderCount(); updateStartAvailability(); if(startBtn.disabled) errs.push('Start should enable with ≥1 total target');
+      }catch(e){ /* ignore */ }
+
+      try{
+        CASES = [
+          { title:'A', image:'x', targets:[{name:'t1',x:10,y:10,w:10,h:10}] },
+          { title:'B', image:'y', targets:[{name:'u1',x:50,y:50,w:10,h:10}] }
+        ]; setCaseIndex(0);
+        active=false; curIndex=-1; playCase=-1; tries=0; nextTarget();
+        if(!active) errs.push('nextTarget should set active=true');
+        if(tries!==3) errs.push('nextTarget should reset tries to 3');
+        curIndex=0; playCase=0; nextTarget(); if(playCase!==1 || curIndex!==0) errs.push('nextTarget should advance to next case');
+      }catch(e){ /* ignore */ }
+
+      try{
+        const hadClean = document.body.classList.contains('clean');
+        document.body.classList.add('clean');
+        const hiddenTargets = getComputedStyle(targetsLayer).display==='none';
+        const hiddenBox = getComputedStyle(targetBoxEl).display==='none';
+        if(!(hiddenTargets && hiddenBox)) errs.push('Clean should hide boxes');
+        if(!hadClean) document.body.classList.remove('clean');
+      }catch(e){ /* ignore */ }
+
       if(errs.length){ console.warn('Self-tests FAILED:', errs); toastMsg('Self-tests failed — see console'); }
-      // restore minimal state
-      TARGETS = []; curIndex=-1; TARGET=null; renderCount(); drawTargetsLayer(); drawCurrentBox();
+      CASES = [{title:'Image 1', image: imgUrl.value, targets: []}]; setCaseIndex(0); TARGET=null; curIndex=-1; playCase=-1; drawTargetsLayer(); drawCurrentBox();
     })();
 
-    // Auto-load the provided URL initially
-    load(imgUrl.value);
-    renderTimer();
+    // ===== Boot: load saved or migrate legacy; then show help =====
+    (function boot(){
+      let loaded = false;
+      try{
+        const raw = localStorage.getItem(LS_KEY);
+        if(raw){ const cfg = JSON.parse(raw); applyConfig(cfg); loaded = true; }
+      }catch{ /* ignore parse */ }
+
+      if(!loaded){
+        for(const k of LEGACY_KEYS){
+          try{
+            const r = localStorage.getItem(k);
+            if(!r) continue;
+            const old = JSON.parse(r);
+            const cfg = Array.isArray(old?.cases) ? old : {
+              cases: [{ title: old?.title || 'Image 1', image: old?.image || '', targets: deepCloneTargets(old?.targets||[]) }]
+            };
+            applyConfig(cfg);
+            try{ localStorage.setItem(LS_KEY, JSON.stringify(cfg)); }catch{}
+            toastMsg('Imported your previous image setup');
+            loaded = true;
+            break;
+          }catch{ /* keep trying */ }
+        }
+      }
+
+      if(!loaded){
+        CASES = [{ title:'Image 1', image: imgUrl.value, targets: [] }];
+        setCaseIndex(0);
+      }
+
+      if(CASES[caseIndex]?.image) load(CASES[caseIndex].image);
+      renderTimer();
+      try{ if(!localStorage.getItem('mskhh_seen_help_v1')) openHelp(); }catch{}
+      if(truthy(params.get('teacher'))) setTimeout(()=> promptTeacherUnlock(), 50);
+    })();
   </script>
 </body>
 </html>
